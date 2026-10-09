@@ -50,6 +50,7 @@ function replayMarket(raw, clock) {
       return { ts, open: b.open }
     },
     async quote(s) {
+      if (clock.down?.[s]) throw new Error('行情接口不可用（演练）')
       const b = await this.currentBar(s)
       const px = clock.quote?.[s] ?? b.open
       return { symbol: s, last: px, index: px, ts: clock.t }

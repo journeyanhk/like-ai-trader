@@ -50,6 +50,7 @@ function createPaper({ store, market, conf = cfg, symbols = conf.symbols } = {})
     dbPos: new Set(),
     hist: {}, // 锚定历史缓存 symbol -> { b1, b4, series, funding: Map, fundTs }
     quotes: {},
+    lastValid: {}, // 最近一次有效（未过期）报价 symbol -> { px, at }
     apiErrors: 0,
     healthy: {},
     inflight: new Map(),
@@ -363,14 +364,19 @@ function createPaper({ store, market, conf = cfg, symbols = conf.symbols } = {})
       // 盘中止损：用实时价判断是否触发；成交价按引擎规则（止损价，开盘已跳空则按开盘价），记在当前 K 线
       let changed = false
       const barNow = Math.floor(t / H1) * H1
+      // 最近有效价：最近一次拿到的有限价格（可能已过期），按报价自身时间记录
+      for (const s of symbols) if (quotes[s] && Number.isFinite(quotes[s].last) && quotes[s].last > 0) S.lastValid[s] = { px: quotes[s].last, at: quotes[s].ts ?? t }
       for (const [s, p] of Object.entries({ ...S.st.positions })) {
-        const q = quotes[s]
-        if (!q || !per[s].stale.ok) continue
+        // P2-2：数据过期 / 取不到行情（暂停开新仓期间）仍用最近一次有效价判断止损，止损保护不中断
+        const fresh = quotes[s] && per[s].stale.ok
+        const q = fresh ? quotes[s] : S.lastValid[s] ? { last: S.lastValid[s].px } : null // 止损价可能已在整点上移（移动止损），旧价格也可能已穿过
+        if (!q) continue
         if (S.st.lastOpenTs !== barNow) continue // 本根 K 线还没开盘结算（整点循环未跑），交给整点循环按 K 线高低价处理
         if (p.entry_ts > barNow) continue
         const hit = p.side > 0 ? q.last <= p.stop : q.last >= p.stop
         if (!hit) continue
         sim.closeAtStop(S.st, s, S.curOpen[s] ?? p.stop, barNow, conf)
+        if (!fresh) await store.logEvent('warn', 'risk', `${s} 行情过期，用最近有效价 ${fmt(q.last, 4)}（${Math.round((t - S.lastValid[s].at) / 1000)} 秒前）判断止损已触发，已平仓`)
         changed = true
       }
       if (changed) await flush()

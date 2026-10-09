@@ -57,6 +57,31 @@ const ok = (c, m) => {
   ok(!S.st.positions[sym] && stopTr?.symbol === sym && stopTr.reason === '止损', `盘中止损触发并平仓（成交价 ${stopTr?.exit_px}，止损价 ${p.stop}）`)
   ok((await paper.reconcile()).ok, '止损后对账一致')
 
+  // 3b. P2-2：行情中断（数据过期暂停）期间，用最近有效价继续判断止损
+  while (!Object.keys(S.st.positions).length && t < lastTs) await cycle()
+  const s2 = Object.keys(S.st.positions)[0]
+  const p2 = S.st.positions[s2]
+  clock.t = t - H1 + 10 * 60_000
+  await paper.monitor() // 正常拿到一次报价 → 记为最近有效价
+  const lv = S.lastValid[s2].px
+  clock.down = Object.fromEntries(cfg.symbols.map((x) => [x, true])) // 之后行情接口全部失败
+  clock.t += 3 * 60_000
+  await paper.monitor()
+  ok(S.meta.pause_keys.includes('stale') && !!S.st.positions[s2], `行情中断 → 数据过期暂停（${S.meta.pause_keys.join(',')}），持仓仍在`)
+  p2.stop = p2.side > 0 ? lv * 1.001 : lv * 0.999 // 模拟整点移动止损把止损移过了最近有效价
+  clock.t += 60_000
+  await paper.monitor()
+  const tr2 = store.mem.trades[store.mem.trades.length - 1]
+  ok(!S.st.positions[s2] && tr2?.symbol === s2 && tr2.reason === '止损', `数据过期期间仍按最近有效价 ${lv} 判断止损并平仓（${s2}）`)
+  ok(store.mem.events.some((e) => /行情过期，用最近有效价/.test(e.message ?? e.msg ?? '')), '事件日志记录了“用最近有效价判断止损”')
+  clock.down = {}
+  clock.t = t - H1 + 30 * 60_000
+  for (let k = 0; k < 6; k++) {
+    await paper.monitor()
+    clock.t += 60_000
+  }
+  await paper.resume()
+
   // 4. 再推进到有持仓 → 紧急停止 → 恢复
   while (!Object.keys(S.st.positions).length && t < lastTs) await cycle()
   const es = await paper.emergencyStop('演练')
