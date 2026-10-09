@@ -1,0 +1,10 @@
+[
+  {
+    "id": "hourly-market",
+    "name": "每小时：同步行情并判定市场状态",
+    "schedule": "2 * * * *",
+    "handler": "jobs/hourly.js",
+    "enabled": true,
+    "timeout": 280
+  }
+]

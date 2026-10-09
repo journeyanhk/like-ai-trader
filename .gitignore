@@ -1,0 +1,9 @@
+node_modules/
+dist/
+.env
+.env.*
+.vulcan/
+.claude/
+uploads/
+*.log
+.DS_Store

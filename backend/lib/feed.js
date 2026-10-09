@@ -1,0 +1,172 @@
+// 行情数据层：拉取 K 线、存储、数据质量检查
+const { dataApi } = require('@surf-ai/sdk/server')
+const { dbQuery } = require('@surf-ai/sdk/db')
+const cfg = require('./config')
+
+const INTERVAL_MS = { '1h': 3600_000, '4h': 4 * 3600_000 }
+const PAGE = 500
+
+let running = null // 同步锁，防止重复执行
+
+async function logEvent(level, type, message, detail = null) {
+  try {
+    await dbQuery('INSERT INTO events (ts, level, type, message, detail) VALUES ($1,$2,$3,$4,$5)', [
+      Date.now(),
+      level,
+      type,
+      message,
+      detail ? JSON.stringify(detail) : null,
+    ])
+  } catch (e) {
+    console.error('logEvent failed', e.message)
+  }
+}
+
+async function withRetry(fn, tries = 4) {
+  let err
+  for (let k = 0; k < tries; k++) {
+    try {
+      return await fn()
+    } catch (e) {
+      err = e
+      await new Promise((r) => setTimeout(r, 500 * 2 ** k)) // 指数退避
+    }
+  }
+  throw err
+}
+
+async function fetchKlines(symbol, interval, fromSec) {
+  const res = await withRetry(() =>
+    dataApi.exchange.klines({
+      pair: symbol,
+      type: cfg.marketType,
+      interval,
+      from: String(fromSec),
+      limit: PAGE,
+      exchange: cfg.exchange,
+    }),
+  )
+  return res?.data?.[0]?.candles ?? []
+}
+
+async function upsertCandles(symbol, interval, rows) {
+  if (!rows.length) return
+  const vals = []
+  const params = []
+  rows.forEach((c, k) => {
+    const b = k * 9
+    vals.push(`($${b + 1},$${b + 2},$${b + 3},$${b + 4},$${b + 5},$${b + 6},$${b + 7},$${b + 8},$${b + 9})`)
+    params.push(`${symbol}:${interval}:${c.ts}`, symbol, interval, c.ts, c.open, c.high, c.low, c.close, c.volume)
+  })
+  await dbQuery(
+    `INSERT INTO candles (id, symbol, interval, ts, open, high, low, close, volume) VALUES ${vals.join(',')}
+     ON CONFLICT (id) DO UPDATE SET open=EXCLUDED.open, high=EXCLUDED.high, low=EXCLUDED.low, close=EXCLUDED.close, volume=EXCLUDED.volume`,
+    params,
+  )
+}
+
+// 数据质量检查：缺口（时间不连续）、重复、乱序
+async function qualityCheck(symbol, interval) {
+  const step = INTERVAL_MS[interval]
+  const { rows } = await dbQuery(
+    `SELECT COUNT(*)::int AS n,
+            MIN(ts)::float8 AS first_ts, MAX(ts)::float8 AS last_ts,
+            SUM(CASE WHEN gap > $3 THEN 1 ELSE 0 END)::int AS gaps,
+            SUM(CASE WHEN gap <= 0 THEN 1 ELSE 0 END)::int AS bad_order
+     FROM (SELECT ts, ts - LAG(ts) OVER (ORDER BY ts) AS gap FROM candles WHERE symbol=$1 AND interval=$2) t`,
+    [symbol, interval, step],
+  )
+  const r = rows[0] || {}
+  const invalid = await dbQuery(
+    `SELECT COUNT(*)::int AS n FROM candles WHERE symbol=$1 AND interval=$2
+     AND (high < low OR close > high OR close < low OR open > high OR open < low OR volume < 0)`,
+    [symbol, interval],
+  )
+  return {
+    count: r.n ?? 0,
+    firstTs: r.first_ts ?? null,
+    lastTs: r.last_ts ?? null,
+    gaps: r.gaps ?? 0,
+    badOrder: r.bad_order ?? 0,
+    invalidBars: invalid.rows[0]?.n ?? 0,
+  }
+}
+
+async function syncOne(symbol, interval) {
+  const step = INTERVAL_MS[interval]
+  const now = Date.now()
+  const { rows } = await dbQuery('SELECT MAX(ts)::float8 AS last FROM candles WHERE symbol=$1 AND interval=$2', [symbol, interval])
+  let cursor = rows[0]?.last ? rows[0].last + step : now - cfg.historyDays * 86400_000
+  cursor = Math.floor(cursor / step) * step
+  let added = 0
+  for (let guard = 0; guard < 60 && cursor + step <= now; guard++) {
+    const raw = await fetchKlines(symbol, interval, Math.floor(cursor / 1000))
+    // 只保留已收盘的 K 线：开盘时间 + 周期 <= 现在
+    const closed = raw
+      .filter((c) => c && c.timestamp != null)
+      .map((c) => ({ ts: c.timestamp * 1000, open: c.open, high: c.high, low: c.low, close: c.close, volume: c.volume }))
+      .filter((c) => c.ts >= cursor && c.ts + step <= now)
+    await upsertCandles(symbol, interval, closed)
+    added += closed.length
+    if (raw.length === 0) break
+    const lastRaw = raw[raw.length - 1].timestamp * 1000
+    const next = lastRaw + step
+    if (next <= cursor) break
+    cursor = next
+    if (raw.length < PAGE) break
+  }
+  const q = await qualityCheck(symbol, interval)
+  const status = q.gaps || q.badOrder || q.invalidBars ? 'warn' : 'ok'
+  const message =
+    status === 'ok' ? '数据完整' : `发现 ${q.gaps} 处缺口、${q.badOrder} 处乱序/重复、${q.invalidBars} 根异常 K 线`
+  await dbQuery(
+    `INSERT INTO sync_state (id, last_ts, last_run_at, candle_count, gaps, status, message) VALUES ($1,$2,$3,$4,$5,$6,$7)
+     ON CONFLICT (id) DO UPDATE SET last_ts=EXCLUDED.last_ts, last_run_at=EXCLUDED.last_run_at, candle_count=EXCLUDED.candle_count,
+     gaps=EXCLUDED.gaps, status=EXCLUDED.status, message=EXCLUDED.message`,
+    [`${symbol}:${interval}`, q.lastTs, Date.now(), q.count, q.gaps, status, message],
+  )
+  if (status !== 'ok') await logEvent('warn', 'data_quality', `${symbol} ${interval}：${message}`, q)
+  return { symbol, interval, added, ...q, status }
+}
+
+async function syncAll() {
+  if (running) return running
+  running = (async () => {
+    const results = []
+    for (const s of cfg.symbols) {
+      for (const iv of [cfg.mainInterval, cfg.confirmInterval]) {
+        try {
+          results.push(await syncOne(s, iv))
+        } catch (e) {
+          results.push({ symbol: s, interval: iv, error: e.message })
+          await logEvent('error', 'data_sync', `${s} ${iv} 行情同步失败：${e.message}`)
+        }
+      }
+    }
+    const added = results.reduce((a, r) => a + (r.added || 0), 0)
+    if (added > 0) await logEvent('info', 'data_sync', `行情同步完成，新增 ${added} 根 K 线`, results)
+    return results
+  })()
+  try {
+    return await running
+  } finally {
+    running = null
+  }
+}
+
+async function loadBars(symbol, interval, limit) {
+  const { rows } = await dbQuery(
+    `SELECT ts::float8 AS ts, open, high, low, close, volume FROM candles WHERE symbol=$1 AND interval=$2 ORDER BY ts DESC LIMIT $3`,
+    [symbol, interval, limit],
+  )
+  return rows.reverse().map((r) => ({
+    ts: Number(r.ts),
+    open: Number(r.open),
+    high: Number(r.high),
+    low: Number(r.low),
+    close: Number(r.close),
+    volume: Number(r.volume),
+  }))
+}
+
+module.exports = { syncAll, syncOne, loadBars, logEvent, isSyncing: () => !!running, INTERVAL_MS }
