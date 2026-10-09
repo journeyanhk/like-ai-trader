@@ -38,6 +38,9 @@ function dbStore() {
   const feed = require('./feed')
   return {
     kind: 'db',
+    async wipe() {
+      for (const t of ['paper_positions', 'paper_orders', 'paper_trades', 'paper_funding', 'paper_equity', 'paper_cycles', 'paper_account']) await dbQuery(`DELETE FROM ${t}`)
+    },
     async loadAccount() {
       const { rows } = await dbQuery(`SELECT * FROM paper_account WHERE id='main'`)
       return rowToAcct(rows[0])
@@ -132,6 +135,9 @@ function memoryStore() {
   return {
     kind: 'memory',
     mem: m,
+    async wipe() {
+      Object.assign(m, { account: null, positions: {}, orders: [], trades: [], funding: [], equity: [], cycles: [] })
+    },
     async loadAccount() {
       return clone(m.account)
     },

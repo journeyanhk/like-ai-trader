@@ -222,3 +222,17 @@ exports.paper_funding = pgTable('paper_funding', {
   assumed: boolean('assumed'),
   cashflow: doublePrecision('cashflow').notNull(), // 正 = 收到，负 = 支付
 })
+
+// P0-4 复现包：模拟盘启动时落盘，验收的「同期回测」只用这里的参数重跑
+exports.paper_repro = pgTable('paper_repro', {
+  id: serial('id').primaryKey(),
+  started_at: bigint('started_at', { mode: 'number' }).notNull(), // 对应 paper_account.started_at
+  created_at: bigint('created_at', { mode: 'number' }).notNull(),
+  config_hash: text('config_hash').notNull(), // 生效配置（含设置页覆盖）的 sha256
+  code_hash: text('code_hash').notNull(), // 引擎源码 sha256（git 不可用时也能对得上）
+  git_commit: text('git_commit'),
+  git_dirty: boolean('git_dirty'),
+  config: jsonb('config').notNull(), // 完整生效配置
+  data: jsonb('data').notNull(), // candles / funding_rates 行数与首尾 ts
+  params: jsonb('params').notNull(), // runBacktest 调用参数
+})

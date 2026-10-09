@@ -85,6 +85,30 @@ function createPaper({ store, market, conf = cfg, symbols = conf.symbols } = {})
     }
   }
 
+  // P0-4 复现包：账户开始时落盘（只在正式数据库存储下；测试用内存存储不写）
+  async function writeRepro(a, why) {
+    if (store.kind !== 'db') return null
+    const repro = require('./repro')
+    const b = await repro.buildBundle({ startedAt: a.started_at, anchorTs: anchorFor(a.started_at, conf), conf, enabled: a.enabled_strategies || conf.paper.strategies })
+    const id = await repro.save(b)
+    await store.logEvent('info', 'system', `已保存复现包 #${id}（${why}）：配置 ${b.config_hash.slice(0, 12)}，代码 ${b.code_hash.slice(0, 12)}，commit ${b.git_commit?.slice(0, 8) ?? '无'}`, { id, config_hash: b.config_hash, git_commit: b.git_commit })
+    return id
+  }
+
+  /** 清空模拟账户全部记录，从现在重新开始计时（会重新生成复现包） */
+  async function resetAccount(reason = '') {
+    return withLock(async () => {
+      await store.wipe()
+      S.loaded = false
+      S.hist = {}
+      S.inflight.clear()
+      S.unknownCount = 0
+      await load(true)
+      await store.logEvent('warn', 'control', `模拟账户已重置，重新开始计时${reason ? `：${reason}` : ''}`)
+      return { ok: true, startedAt: S.meta.started_at }
+    })
+  }
+
   async function load(force = false) {
     if (S.loaded && !force) return
     if (store.kind === 'db') await require('./settings').ensureLoaded()
@@ -108,6 +132,7 @@ function createPaper({ store, market, conf = cfg, symbols = conf.symbols } = {})
       })
       await store.logEvent('info', 'system', `模拟账户已创建，起始资金 ${eq.toLocaleString()} USDT`)
       a = await store.loadAccount()
+      await writeRepro(a, '账户创建')
     }
     const e = a.engine || {}
     const st = sim.newState({ startEquity: conf.paperStartingEquity, enabled: a.enabled_strategies || conf.paper.strategies, invalidation: true, log: true })
@@ -564,6 +589,9 @@ function createPaper({ store, market, conf = cfg, symbols = conf.symbols } = {})
       )
       if (unknown > 0) await setPause('order_unknown', true, `${unknown} 笔`)
       if (!rc.ok) await setPause('reconcile', true, rc.diffs.map((d) => d.symbol).join('、'))
+      if (store.kind === 'db' && !(await require('./repro').latest(S.meta.started_at))) {
+        await writeRepro({ started_at: S.meta.started_at, enabled_strategies: [...S.st.enabled] }, '补建：账户早于复现包功能')
+      }
       S.meta.last_heartbeat = t
       await saveAcct()
     })
@@ -659,7 +687,7 @@ function createPaper({ store, market, conf = cfg, symbols = conf.symbols } = {})
     return minute >= 5 && (S.st.lastCloseTs == null || S.st.lastCloseTs < barTs)
   }
 
-  return { S, store, drillPause, needsCycle, load, monitor, runCycle, emergencyStop, resume, unlock, setStrategy, startup, snapshot, reconcile, sweepUnknownOrders, setPause, saveAcct, flush, PAUSE }
+  return { S, store, resetAccount, drillPause, needsCycle, load, monitor, runCycle, emergencyStop, resume, unlock, setStrategy, startup, snapshot, reconcile, sweepUnknownOrders, setPause, saveAcct, flush, PAUSE }
 }
 
 // 正式实例：数据库 + OKX 实时行情
@@ -686,4 +714,5 @@ module.exports = {
   snapshot: (...a) => getLive().snapshot(...a),
   reconcile: (...a) => getLive().reconcile(...a),
   needsCycle: (...a) => getLive().needsCycle(...a),
+  resetAccount: (...a) => getLive().resetAccount(...a),
 }

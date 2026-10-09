@@ -142,6 +142,16 @@ function runBt(raw, anchorTs, from, to) {
   const idt = cfg.paperStartingEquity + la.realized_pnl - la.fees_paid + la.funding_pnl - la.cash
   console.log(`  核算恒等式 起始资金 + 已实现 − 手续费 + 资金费 − 现金 = ${idt.toExponential(2)}（浮点误差级）`)
 
+  // ---------- P0-4：用复现包参数重跑（验收页走的就是这条路径）----------
+  const repro = require('../lib/repro')
+  const bundle = await repro.buildBundle({ startedAt: start + 2 * 60_000, anchorTs, enabled: cfg.paper.strategies })
+  const rr = await repro.rerun(bundle, pp1.st.lastCloseTs)
+  const lr = sim.ledger(rr.res.state)
+  const rrFills = rr.res.state.fills.map(pickFill)
+  const rrBad = FIELDS.filter((f) => lr[f] !== lb2[f])
+  if (sha(rrFills) !== sha(pp1.fills) || rrBad.length) fail(`复现包重跑与模拟盘不一致：${rrBad.join(',')}`)
+  else console.log(`PASS 复现包重跑（配置 ${bundle.config_hash.slice(0, 12)}，from ${new Date(bundle.params.from).toISOString().slice(0, 13)}）：fills ${rrFills.length} 笔 sha256 相同，六字段差值全为 0`)
+
   // ---------- 确定性 ----------
   const h = [sha(bt1.fills), sha(bt2.fills), sha(pp1.fills), sha(pp2.fills)]
   console.log('\nfills sha256：')

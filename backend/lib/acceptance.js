@@ -31,45 +31,61 @@ async function backtestPart(runId) {
 let devCache = { key: null, value: null }
 let devRunning = null
 async function paperVsBacktest(snap) {
-  const key = `${snap.startedAt}|${snap.lastBarTs}|${snap.strategies.filter((x) => x.enabled).map((x) => x.name).join(',')}|${JSON.stringify(cfg.risk)}`
+  const repro = require('./repro')
+  const bundle = await repro.latest(snap.startedAt)
+  const key = `${snap.startedAt}|${snap.lastBarTs}|${bundle?.id ?? 'none'}`
   if (devCache.key === key) return devCache.value
   if (devRunning) return devRunning
   devRunning = (async () => {
-    const { loadData } = require('./lab')
-    const strategies = snap.strategies.filter((x) => x.enabled).map((x) => x.name)
-    const from = Math.floor(snap.startedAt / H1) * H1
-    const to = (snap.lastBarTs ?? Math.floor(Date.now() / H1) * H1 - H1) + H1
-    const eqRows = (await dbQuery(`SELECT ts::float8 AS ts, equity FROM paper_equity ORDER BY ts`)).rows.map((r) => ({ ts: Number(r.ts), equity: Number(r.equity) }))
     const start = cfg.paperStartingEquity
     const paperRet = (snap.equity / start - 1) * 100
+    const eqRows = (await dbQuery(`SELECT ts::float8 AS ts, equity FROM paper_equity ORDER BY ts`)).rows.map((r) => ({ ts: Number(r.ts), equity: Number(r.equity) }))
+    const { rows: tr } = await dbQuery(`SELECT COUNT(*)::int AS c FROM paper_trades`)
+    const base0 = { paperReturnPct: r2(paperRet, 3), paperTrades: tr[0].c, formula: `|模拟收益 − 回测收益| ÷ max(|回测收益|, ${cfg.acceptance.devMinBaseReturnPct}%)`, computedAt: Date.now() }
+    if (!bundle) {
+      const value = { ...base0, missingBundle: true, devPct: null, curve: [], note: '没有找到这次模拟的复现包，无法重跑同期回测（重启后端会自动补建）' }
+      devCache = { key, value }
+      return value
+    }
     let bt = null
-    if (strategies.length && to > from) {
-      const data = await loadData(cfg.symbols)
-      const defaults = Object.fromEntries(strategies.map((n) => [n, { ...STRATEGIES[n].defaults }]))
-      const res = runBacktest(data, { strategies, paramsAt: (n) => defaults[n], from, to, regimeFilter: true, ddLock: true })
+    let ledgerDiff = null
+    const check = await repro.verify(bundle)
+    if (snap.lastBarTs != null && snap.lastBarTs >= bundle.params.from) {
+      // 只用复现包里的参数、配置、策略参数重跑
+      const { res } = await repro.rerun(bundle, snap.lastBarTs)
       const hourly = res.hourly.map((h) => ({ ts: h.ts + H1, equity: h.equity }))
-      const end = hourly.length ? hourly[hourly.length - 1].equity : start
-      bt = { returnPct: (end / start - 1) * 100, trades: res.trades.length, curve: hourly }
+      const btLedger = require('./simulate').ledger(res.state)
+      bt = { returnPct: (btLedger.equity / start - 1) * 100, trades: res.trades.length, fills: res.state.fills.length, curve: hourly, ledger: btLedger }
+      if (snap.ledger) ledgerDiff = Object.fromEntries(Object.keys(btLedger).map((k) => [k, r2(snap.ledger[k] - btLedger[k], 6)]))
     }
     const btRet = bt?.returnPct ?? 0
     const base = Math.max(Math.abs(btRet), cfg.acceptance.devMinBaseReturnPct)
     const devPct = (Math.abs(paperRet - btRet) / base) * 100
-    // 曲线对齐（按小时）
     const btMap = new Map((bt?.curve ?? []).map((p) => [p.ts, p.equity]))
-    const curve = eqRows.filter((p) => p.ts >= from).map((p) => ({ ts: p.ts, paper: r2(p.equity), backtest: r2(btMap.get(p.ts) ?? null) }))
-    const { rows: tr } = await dbQuery(`SELECT COUNT(*)::int AS c FROM paper_trades`)
+    const curve = eqRows.filter((p) => p.ts >= bundle.params.from).map((p) => ({ ts: p.ts, paper: r2(p.equity), backtest: r2(btMap.get(p.ts) ?? null) }))
     const value = {
-      from,
-      to,
-      strategies: strategies.map((n) => STRATEGIES[n].label),
-      paperReturnPct: r2(paperRet, 3),
+      ...base0,
+      from: bundle.params.from,
+      to: snap.lastBarTs,
+      strategies: bundle.params.strategies.map((n) => STRATEGIES[n]?.label ?? n),
       backtestReturnPct: r2(btRet, 3),
-      paperTrades: tr[0].c,
       backtestTrades: bt?.trades ?? 0,
       devPct: r2(devPct, 1),
-      formula: `|模拟收益 − 回测收益| ÷ max(|回测收益|, ${cfg.acceptance.devMinBaseReturnPct}%)`,
+      ledgerDiff, // 模拟盘账本 − 复现回测账本（六个字段）
+      repro: {
+        id: bundle.id,
+        createdAt: bundle.created_at,
+        configHash: bundle.config_hash,
+        codeHash: bundle.code_hash,
+        gitCommit: bundle.git_commit,
+        gitDirty: bundle.git_dirty,
+        anchorTs: bundle.params.anchorTs,
+        dataOk: check.dataOk,
+        dataDiffs: check.diffs,
+        configSame: check.configSame,
+        codeSame: check.codeSame,
+      },
       curve,
-      computedAt: Date.now(),
     }
     devCache = { key, value }
     return value
@@ -199,7 +215,7 @@ async function evaluate({ runId } = {}) {
           value: dev ? `${dev.devPct}%` : '—',
           target: `< ${A.paperVsBacktestDevPct}%`,
           note: dev
-            ? `模拟 ${dev.paperReturnPct >= 0 ? '+' : ''}${dev.paperReturnPct}%（${dev.paperTrades} 笔） vs 同期回测 ${dev.backtestReturnPct >= 0 ? '+' : ''}${dev.backtestReturnPct}%（${dev.backtestTrades} 笔）。须运行满 ${A.paperDays} 天才计入验收。`
+            ? `模拟 ${dev.paperReturnPct >= 0 ? '+' : ''}${dev.paperReturnPct}%（${dev.paperTrades} 笔） vs 同期回测 ${dev.backtestReturnPct >= 0 ? '+' : ''}${dev.backtestReturnPct}%（${dev.backtestTrades} 笔）。按复现包 #${dev.repro?.id ?? "—"}（配置 ${dev.repro?.configHash?.slice(0, 8) ?? "—"}，commit ${dev.repro?.gitCommit?.slice(0, 8) ?? "—"}）重跑${dev.repro && !dev.repro.dataOk ? "；⚠ 启动前历史数据与复现包记录不一致" : ""}${dev.repro && !dev.repro.configSame ? "；当前配置已与启动时不同，回测仍按启动时配置" : ""}。须运行满 ${A.paperDays} 天才计入验收。`
             : devError ?? '计算中',
           pass: !!dev && dev.devPct < A.paperVsBacktestDevPct && run.continuousDays >= A.paperDays,
           pending: !!dev && run.continuousDays < A.paperDays,
