@@ -76,6 +76,10 @@ module.exports = {
     testDays: 60,
     stepDays: 30,
     minTrainTrades: 8, // 训练期交易太少的参数组合不予采用
+    // P2-3 留出集：2026-10-09 标记的最近 90 天（2026-07-11 00:00 UTC 起）。边界固定不随时间滚动，
+    // 策略比较 / 参数挑选 / 回测实验室一律不读这段数据，留到最终一次性检验。
+    holdoutDays: 90,
+    holdoutFrom: Date.UTC(2026, 6, 11),
   },
 
   paperStartingEquity: 10000,

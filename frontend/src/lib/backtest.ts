@@ -84,6 +84,8 @@ export interface RunSummary {
   symbols: string[]
   strategies: string[]
   regimeFilter: boolean
+  holdoutFrom?: number // 留出集起点：之后的数据不参与策略比较
+  holdoutDays?: number
   ddLock: boolean
   from: number
   to: number

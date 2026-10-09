@@ -211,6 +211,11 @@ function Report({ run, r }: { run: RunRow; r: LabResult }) {
             {fmtDate(s.from)} → {fmtDate(s.to)} · {s.symbols.map(coin).join(' + ')} · {s.strategies.map((k) => STRATEGY_NAME[k] ?? k).join(' + ')} · 市场状态过滤{s.regimeFilter ? '开' : '关'}
           </span>
         </div>
+        <p className={`mt-1 text-xs ${s.holdoutFrom ? 'text-fg-muted' : 'text-amber-400'}`}>
+          {s.holdoutFrom
+            ? `最近 ${s.holdoutDays ?? 90} 天（${fmtDate(s.holdoutFrom)} 起）是留出集，这次回测没有使用，留到最终一次性检验。`
+            : '这次回测用到了最近 90 天的留出集数据，不能作为策略比较依据，请重新运行。'}
+        </p>
         <MetricGrid m={m} bench={r.main.benchmarkReturnPct} />
         {r.main.locked && (
           <div className="mt-3 text-sm text-[#f59e0b]">⚠ {fmtDate(r.main.locked.ts)} 回撤达到 10%，触发风控锁定，之后停止交易。</div>

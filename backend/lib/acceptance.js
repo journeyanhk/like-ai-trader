@@ -24,6 +24,7 @@ async function backtestPart(runId) {
   const warnings = []
   if (s.symbols && cfg.symbols.some((x) => !s.symbols.includes(x))) warnings.push(`这次回测只包含 ${s.symbols.join('、')}，模拟盘交易的是 ${cfg.symbols.join('、')}`)
   if (s.regimeFilter === false) warnings.push('这次回测没有开启市场状态过滤，和模拟盘规则不一致')
+  if (!s.holdoutFrom || s.to > cfg.backtest.holdoutFrom) warnings.push(`这次回测用到了留出集（${new Date(cfg.backtest.holdoutFrom).toISOString().slice(0, 10)} 之后的最近 ${cfg.backtest.holdoutDays} 天），不能作为策略比较依据，请重新运行回测`)
   return { runs, run: { id: run.id, summary: s }, checks, warnings }
 }
 

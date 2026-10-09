@@ -17,7 +17,8 @@ async function loadData(symbols, { anchorTs = null, toTs = Number.MAX_SAFE_INTEG
   const data = {}
   const anchor = anchorTs ?? Math.floor((Date.now() - cfg.historyDays * DAY) / (4 * 3600_000)) * 4 * 3600_000
   for (const s of symbols) {
-    const [b1, b4, f] = await Promise.all([feed.loadBarsRange(s, '1h', anchor, toTs), feed.loadBarsRange(s, '4h', anchor, toTs), feed.loadFunding(s)])
+    const [b1, b4, f0] = await Promise.all([feed.loadBarsRange(s, '1h', anchor, toTs), feed.loadBarsRange(s, '4h', anchor, toTs), feed.loadFunding(s)])
+    const f = f0.filter((x) => x.ts < toTs)
     if (b1.length < 24 * 60) throw new Error(`${s} 历史数据不足，请先同步行情`)
     const series = buildSeries(b1, b4)
     data[s] = { ...series, funding: new Map(f.map((x) => [x.ts, x.rate])), fundingFrom: f[0]?.ts ?? null }
@@ -48,7 +49,14 @@ async function runLab(req) {
   const strategies = (req.strategies?.length ? req.strategies : Object.keys(STRATEGIES)).filter((s) => STRATEGIES[s])
   const regimeFilter = req.regimeFilter !== false
   const ddLock = !!req.ddLock
-  const data = await loadData(symbols)
+  // P2-3：策略比较阶段只用留出集之前的数据（4h K 线要在边界前收盘）
+  const holdoutFrom = cfg.backtest.holdoutFrom
+  const data = await loadData(symbols, { toTs: holdoutFrom })
+  for (const s of symbols) {
+    const last1h = data[s].bars[data[s].bars.length - 1]?.ts
+    const last4h = data[s].bars4h?.[data[s].bars4h.length - 1]?.ts
+    if (last1h >= holdoutFrom || last4h + 4 * 3600_000 > holdoutFrom) throw new Error('数据越过留出集边界，已中止')
+  }
   const cache = new Map()
 
   const allTs = data[symbols[0]].bars.map((b) => b.ts)
@@ -183,6 +191,8 @@ async function runLab(req) {
     ddLock,
     from: start,
     to: end,
+    holdoutFrom,
+    holdoutDays: cfg.backtest.holdoutDays,
     totalReturnPct: round(mainM.totalReturnPct),
     sharpe: round(mainM.sharpe),
     maxDrawdownPct: round(mainM.maxDrawdownPct),
