@@ -3,22 +3,24 @@
 const { dbQuery } = require('@surf-ai/sdk/db')
 const cfg = require('./config')
 const feed = require('./feed')
-const { regimeSeries } = require('./regime')
+const { buildSeries } = require('./simulate')
 const { STRATEGIES, expandGrid } = require('./strategies')
 const { runBacktest, metrics, dailyCurve } = require('./backtest')
 
 const DAY = 86400_000
 
-async function loadData(symbols) {
+/**
+ * 读取锚定历史：K 线从 anchorTs 开始（指标、市场状态都从这里起算，模拟盘用同一个锚点），到 toTs 为止。
+ * 不传 anchorTs 时取最近 historyDays 天。
+ */
+async function loadData(symbols, { anchorTs = null, toTs = Number.MAX_SAFE_INTEGER } = {}) {
   const data = {}
+  const anchor = anchorTs ?? Math.floor((Date.now() - cfg.historyDays * DAY) / (4 * 3600_000)) * 4 * 3600_000
   for (const s of symbols) {
-    const [b1, b4, f] = await Promise.all([
-      feed.loadBars(s, '1h', cfg.historyDays * 24 + 48),
-      feed.loadBars(s, '4h', cfg.historyDays * 6 + 12),
-      feed.loadFunding(s),
-    ])
+    const [b1, b4, f] = await Promise.all([feed.loadBarsRange(s, '1h', anchor, toTs), feed.loadBarsRange(s, '4h', anchor, toTs), feed.loadFunding(s)])
     if (b1.length < 24 * 60) throw new Error(`${s} 历史数据不足，请先同步行情`)
-    data[s] = { bars: b1, regimes: regimeSeries(b1, b4).regime, funding: new Map(f.map((x) => [x.ts, x.rate])), fundingFrom: f[0]?.ts ?? null }
+    const series = buildSeries(b1, b4)
+    data[s] = { ...series, funding: new Map(f.map((x) => [x.ts, x.rate])), fundingFrom: f[0]?.ts ?? null }
   }
   return data
 }

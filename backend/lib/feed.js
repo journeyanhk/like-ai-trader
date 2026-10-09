@@ -176,4 +176,25 @@ async function loadBars(symbol, interval, limit) {
   }))
 }
 
-module.exports = { syncAll, syncOne, loadBars, loadFunding, logEvent, isSyncing: () => !!running, INTERVAL_MS }
+// 按时间区间读取（锚定历史用）：ts ∈ [fromTs, toTs)，升序
+async function loadBarsRange(symbol, interval, fromTs, toTs = Number.MAX_SAFE_INTEGER) {
+  const out = []
+  let after = fromTs - 1
+  for (;;) {
+    const { rows } = await dbQuery(
+      `SELECT ts::float8 AS ts, open, high, low, close, volume FROM candles WHERE symbol=$1 AND interval=$2 AND ts > $3 AND ts < $4 ORDER BY ts LIMIT 5000`,
+      [symbol, interval, after, toTs],
+    )
+    for (const r of rows) out.push({ ts: Number(r.ts), open: Number(r.open), high: Number(r.high), low: Number(r.low), close: Number(r.close), volume: Number(r.volume) })
+    if (rows.length < 5000) break
+    after = out[out.length - 1].ts
+  }
+  return out
+}
+
+async function loadFundingRange(symbol, fromTs, toTs = Number.MAX_SAFE_INTEGER) {
+  const r = await dbQuery('SELECT ts::float8 AS ts, rate FROM funding_rates WHERE symbol=$1 AND ts >= $2 AND ts < $3 ORDER BY ts LIMIT 5000', [symbol, fromTs, toTs])
+  return r.rows.map((x) => ({ ts: Number(x.ts), rate: Number(x.rate) }))
+}
+
+module.exports = { loadBarsRange, loadFundingRange, syncAll, syncOne, loadBars, loadFunding, logEvent, isSyncing: () => !!running, INTERVAL_MS }

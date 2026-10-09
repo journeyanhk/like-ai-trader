@@ -87,6 +87,8 @@ exports.paper_account = pgTable('paper_account', {
   last_cycle_at: bigint('last_cycle_at', { mode: 'number' }),
   started_at: bigint('started_at', { mode: 'number' }),
   updated_at: bigint('updated_at', { mode: 'number' }),
+  // P0-1：共用模拟引擎的其余状态（待执行指令、最近收盘价、累计盈亏/手续费/资金费、策略失效统计、锚定历史起点）
+  engine: jsonb('engine'),
 })
 
 // 当前持仓
@@ -123,6 +125,7 @@ exports.paper_orders = pgTable('paper_orders', {
   reason: text('reason'),
   strategy: text('strategy'),
   signal_ts: bigint('signal_ts', { mode: 'number' }),
+  fill_ts: bigint('fill_ts', { mode: 'number' }), // 引擎成交时刻（K 线时间），与回测逐笔对照用
   history: jsonb('history'), // 状态变化记录
   created_at: bigint('created_at', { mode: 'number' }).notNull(),
   updated_at: bigint('updated_at', { mode: 'number' }),
@@ -204,4 +207,18 @@ exports.trade_reviews = pgTable('trade_reviews', {
   news: jsonb('news'),
   news_credits: integer('news_credits'),
   error: text('error'),
+})
+
+// ===== P0：回测与模拟盘统一引擎 =====
+// 资金费现金流明细（每次结算一行：数量、标记价、费率、现金流），用于与交易所历史对账
+exports.paper_funding = pgTable('paper_funding', {
+  id: serial('id').primaryKey(),
+  ts: bigint('ts', { mode: 'number' }).notNull(), // 结算时刻
+  symbol: text('symbol').notNull(),
+  side: integer('side').notNull(),
+  qty: doublePrecision('qty').notNull(),
+  mark: doublePrecision('mark').notNull(),
+  rate: doublePrecision('rate'), // null = 没有历史费率，按保守假设
+  assumed: boolean('assumed'),
+  cashflow: doublePrecision('cashflow').notNull(), // 正 = 收到，负 = 支付
 })

@@ -16,7 +16,10 @@ const LABELS = {
 const H4 = 4 * 3600_000
 const H1 = 3600_000
 
-function regimeSeries(bars1h, bars4h) {
+// opts.from：只为下标 ≥ from 的 K 线判定状态（模拟盘增量计算用；所有指标都是因果的，
+// 同一段锚定历史上算出来的结果与一次性全量计算逐位相同）
+function regimeSeries(bars1h, bars4h, opts = {}) {
+  const from = opts.from ?? 0
   const r = cfg.regime
   const n = bars1h.length
   const closes1h = bars1h.map((b) => b.close)
@@ -53,6 +56,7 @@ function regimeSeries(bars1h, bars4h) {
   for (let i = 0; i < n; i++) {
     const closeT = bars1h[i].ts + H1
     while (j + 1 < bars4h.length && bars4h[j + 1].ts + H4 <= closeT) j++
+    if (i < from) continue
 
     // 波动率分位（过去 90 天）
     if (atrPct[i] != null) {

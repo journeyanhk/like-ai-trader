@@ -97,7 +97,8 @@ function evaluateEntry(input, conf = cfg) {
   add('daily', `今日亏损未达 ${conf.risk.dailyLossLimitPct}%`, !input.dayBlocked, input.dayBlocked ? '今日已停开新仓' : '未触发')
   add('bar', 'K 线数据是最新的', input.barFresh, input.barFresh ? '最新' : 'K 线未更新')
   const allowed = conf.allowedStrategies[regime] || []
-  add('regime', '市场状态允许此策略', allowed.includes(strategy), `当前状态 ${regime}，允许：${allowed.join('、') || '无（不开新仓）'}`)
+  if (input.regimeFilter === false) add('regime', '市场状态允许此策略', true, '研究模式：未开启市场状态过滤')
+  else add('regime', '市场状态允许此策略', allowed.includes(strategy), `当前状态 ${regime}，允许：${allowed.join('、') || '无（不开新仓）'}`)
   add('enabled', '策略已启用且未失效', (input.enabled || []).includes(strategy) && !input.disabled?.[strategy], input.disabled?.[strategy] || ((input.enabled || []).includes(strategy) ? '正常' : '已手动停用'))
   add('noPos', '该币种当前没有持仓', !input.positions?.[symbol], input.positions?.[symbol] ? '已有持仓' : '无持仓')
   const rightSide = signal.side > 0 ? refPx > signal.stop : refPx < signal.stop
