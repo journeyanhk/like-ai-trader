@@ -18,7 +18,7 @@ async function backtestPart(runId) {
   ).rows.map((r) => ({ id: r.id, createdAt: r.created_at ? new Date(r.created_at).getTime() : null, summary: r.summary }))
   // 运营口径 = 开了回撤锁定（锁定后永不解锁，不作策略判断）；研究假设运行也不作为默认依据
   const isOps = (r) => !!r.summary?.ddLock || r.summary?.purpose === 'ops'
-  const isResearch = (r) => !!r.summary?.research
+  const isResearch = (r) => !!r.summary?.research && !/baseline$/.test(r.summary.research)
   const chosenId = runId && runs.some((r) => r.id === runId) ? runId : (runs.find((r) => !isOps(r) && !isResearch(r)) ?? runs[0])?.id
   if (!chosenId) return { runs, run: null, checks: null }
   const { rows } = await dbQuery(`SELECT id, summary, result->'checks' AS checks FROM backtest_runs WHERE id=$1`, [chosenId])
