@@ -20,6 +20,9 @@
 | 6 | 验收清单页 | ✅ 已完成 |
 | 7 | 策略升级：趋势突破 + 5 币分散，回测验收 5/5 通过 | ✅ 已完成 |
 | 8 | 回测 / 模拟盘同一引擎、等价性与确定性测试、复现包、合约取整、留出集、告警 | ✅ 已完成 |
+| 9 | 告警接通（Telegram + Healthchecks）、全部测试进 `npm test`、合约规格每日核对、夏普下降归因、研究流程预注册 | ✅ 已完成；第 1 轮研究待确认后运行 |
+
+**策略门现状**：回测 #5 样本外夏普 0.77（4/5）。归因与研究规则见 [`docs/research-log.md`](docs/research-log.md)：不为跨过 1.0 去调策略，最多 3 个预注册假设各跑一次，留出集只用一次。30 天模拟盘（管线门）不受影响，照常计时。
 
 ## 数据来源与费用
 
@@ -153,11 +156,11 @@ docs/                  设计文档与计划
 
 | 检查 | 命令 | 要求 |
 |---|---|---|
-| 等价性 + 确定性 | `cd backend && node tests/equivalence.js 60` | 同一段 60 天历史，回测与模拟盘主循环 fills 逐笔一致；cash / realized_pnl / funding_pnl / fees_paid / unrealized / equity 差值为 0；两次运行 sha256 相同；复现包重跑也一致 |
-| 资金费对账 | `node tests/funding-audit.js` | 三笔资金费的 qty / mark / rate / cashflow 与 OKX 历史一致 |
-| 单元测试 | `node --test tests/risk.test.js` | 仓位、合约取整、相关组上限、策略失效、状态机等 |
+| 等价性 + 确定性 | `cd backend && node tests/equivalence.test.js 60` | 同一段 60 天历史，回测与模拟盘主循环 fills 逐笔一致；cash / realized_pnl / funding_pnl / fees_paid / unrealized / equity 差值为 0；两次运行 sha256 相同；复现包重跑也一致 |
+| 资金费对账 | `node tests/funding-audit.test.js` | 三笔资金费的 qty / mark / rate / cashflow 与 OKX 历史一致 |
+| 单元测试 | `npm test`（全部：单元 + 等价性 + 资金费对账 + 演练） | 仓位、合约取整、相关组上限、策略失效、状态机等 |
 | 演练 | `node scripts/paper-drill.js` | 用历史回放驱动真实主循环（内存账户，不碰正式账户），覆盖止损、暂停、紧急停止、未知订单、回撤锁定、日亏 |
-| 合约规格 | `node scripts/check-contracts.js` | 配置里的 ctVal/lotSz/minSz 与 OKX 实时规格一致 |
+| 合约规格 | `node scripts/check-contracts.js` | 配置里的 ctVal/lotSz/minSz 与 OKX 实时规格一致；每日复盘任务（UTC 00:05）也自动核对，变化即告警 |
 | 资金费回填 | `node scripts/backfill-funding.js` | 回填至少 400 天（默认 730 天） |
 | 重置模拟账户 | `node scripts/paper-reset.js "原因"` | 清空模拟账户并重新计时，同时生成新的复现包 |
 
@@ -168,6 +171,19 @@ docs/                  设计文档与计划
 - **Telegram 直发**：在 `backend/.env` 填 `TELEGRAM_BOT_TOKEN` 和 `TELEGRAM_CHAT_ID`。自动暂停 / 恢复、开平仓、止损、回撤锁定、日亏、紧急停止、对账异常、自检异常都会推送（同一条 10 分钟内不重复，每小时最多 30 条）。设置页可发测试消息。
 - **外部探活（拉取）**：`GET /api/probe`，正常 200、异常 503。用 UptimeRobot 等外部服务每几分钟访问一次；系统整个挂掉时由外部服务提醒你。
 - **外部探活（推送，可选）**：在 `backend/.env` 填 `HEALTHCHECK_PING_URL`（如 Healthchecks.io），每分钟巡检成功就报一次平安，超时未报由对方告警。
+
+已接通（第 9 次交付）：Telegram 群（chat_id 为负数，是群组）与 Healthchecks.io 推送探活，令牌只存在 `backend/.env`，不进 git。`.env` 改动无需重启，下一次巡检自动读到。
+
+### 已知运营风险
+
+- **回撤锁定大约一年触发一次。** 回测 #5 的样本外最大回撤 10.06%，而运行规则是「回撤 ≥ 10% 全平并锁定、人工解锁」。验收线是 < 15%，所以验收能过，但按历史推算，真实运行中大约每年会触发一次锁定，需要人工检查后解锁。我们**选择维持 10%**（宁可多停一次，也不放宽亏损上限），把这次人工介入当作正常运营的一部分，而不是故障。
+- **止损成交价偏乐观（已记入下一轮冻结前待办）。** 当前止损按止损价成交、没有额外滑点（`stopSlippageBps` 未配置，默认 0），比普通市价单（5 bp）还理想；快速行情里真实止损通常更差。计划在下一轮参数冻结前把 `costs.stopSlippageBps` 设为 10。**30 天模拟盘计时期间不改**，因为它属于冻结的成本参数，改了会让模拟盘与复现包不一致。
+
+### 下一轮冻结前待办（计时期间不动决策路径）
+
+| 项 | 内容 |
+|---|---|
+| 止损滑点 | `config.costs.stopSlippageBps: 10`（属 costs 冻结组） |
 
 数据库访问说明：数据库由 Surf SDK 托管。为了尽量少访问，账户状态常驻内存，只在变化时写库；每分钟巡检平时只访问 OKX 免费接口，心跳与对账每 5 分钟写一次。
 

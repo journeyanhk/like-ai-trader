@@ -8,7 +8,8 @@ let hourCount = 0
 let lastError = null
 let lastSentAt = null
 
-const configured = () => !!(process.env.TELEGRAM_BOT_TOKEN && process.env.TELEGRAM_CHAT_ID)
+const { loadEnv } = require('./envfile')
+const configured = () => (loadEnv(), !!(process.env.TELEGRAM_BOT_TOKEN && process.env.TELEGRAM_CHAT_ID))
 
 async function sendTelegram(text) {
   if (!configured()) return { ok: false, error: '未配置 TELEGRAM_BOT_TOKEN / TELEGRAM_CHAT_ID' }

@@ -4,7 +4,7 @@
 //   B. 模拟盘：真正的 paper.runCycle 主循环，按小时推进时钟逐根驱动（内存存储 + 历史回放行情，不碰正式账户）
 // 要求：fills 逐笔一致；期末 cash / realized_pnl / funding_pnl / fees_paid / unrealized / equity 六个字段差值为 0。
 // 确定性：同一输入连跑两次，fills 的 sha256 相同。
-// 运行：cd backend && node tests/equivalence.js [天数=60]
+// 运行：cd backend && node tests/equivalence.test.js [天数=60]
 const crypto = require('crypto')
 const cfg = require('../lib/config')
 const feed = require('../lib/feed')

@@ -7,6 +7,7 @@ let catchingUp = false
 // P2-4 推送式探活：配置了 HEALTHCHECK_PING_URL（如 Healthchecks.io）时，每分钟巡检成功就 ping 一次；
 // 失败 ping /fail。进程挂掉 → 不再 ping → 外部服务按超时报警（这是进程自己发不出的那种告警）。
 function ping(suffix = '') {
+  require('../lib/envfile').loadEnv()
   const url = process.env.HEALTHCHECK_PING_URL
   if (!url) return
   fetch(url.replace(/\/$/, '') + suffix, { signal: AbortSignal.timeout(8000) }).catch((e) => console.error('[probe] ping 失败', e.message))

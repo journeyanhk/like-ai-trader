@@ -3,7 +3,7 @@
 // 列出引擎记账的 qty / mark / rate / cashflow，并直接向 OKX 公共接口取同一时刻的
 //   资金费率历史（public/funding-rate-history）、标记价格 K 线（market/history-mark-price-candles）、成交价 K 线（market/history-candles）
 // 用交易所口径「资金费 = 持仓数量 × 标记价格 × 费率，多付空收（费率为正时）」重算并比对。
-// 运行：cd backend && node tests/funding-audit.js
+// 运行：cd backend && node tests/funding-audit.test.js
 const cfg = require('../lib/config')
 const feed = require('../lib/feed')
 const sim = require('../lib/simulate')
@@ -68,6 +68,7 @@ async function exchange(symbol, ts) {
     console.log(`             交易所口径现金流（用标记价）= ${exCash.toFixed(6)} USDT，与引擎差 ${(e.cashflow - exCash).toFixed(6)} USDT（${(((e.cashflow - exCash) / exCash) * 100).toFixed(4)}%，来自成交价与标记价的价差）`)
     if (Math.abs(ourRecalc - e.cashflow) > 1e-9 || x.fundingRate !== e.rate) bad++
   }
+  if (bad) process.exitCode = 1
   console.log(bad ? '\n结果：有不一致，见上' : '\n结果：三笔费率与交易所一致，现金流公式核对无误')
 })().catch((e) => {
   console.error(e)
