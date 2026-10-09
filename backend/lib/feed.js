@@ -1,10 +1,9 @@
 // 行情数据层：拉取 K 线、存储、数据质量检查
-const { dataApi } = require('@surf-ai/sdk/server')
+const okx = require('./okx') // 免费公开数据源，不消耗 Surf 点数
 const { dbQuery } = require('@surf-ai/sdk/db')
 const cfg = require('./config')
 
 const INTERVAL_MS = { '1h': 3600_000, '4h': 4 * 3600_000 }
-const PAGE = 500
 
 let running = null // 同步锁，防止重复执行
 
@@ -20,33 +19,6 @@ async function logEvent(level, type, message, detail = null) {
   } catch (e) {
     console.error('logEvent failed', e.message)
   }
-}
-
-async function withRetry(fn, tries = 4) {
-  let err
-  for (let k = 0; k < tries; k++) {
-    try {
-      return await fn()
-    } catch (e) {
-      err = e
-      await new Promise((r) => setTimeout(r, 500 * 2 ** k)) // 指数退避
-    }
-  }
-  throw err
-}
-
-async function fetchKlines(symbol, interval, fromSec) {
-  const res = await withRetry(() =>
-    dataApi.exchange.klines({
-      pair: symbol,
-      type: cfg.marketType,
-      interval,
-      from: String(fromSec),
-      limit: PAGE,
-      exchange: cfg.exchange,
-    }),
-  )
-  return res?.data?.[0]?.candles ?? []
 }
 
 async function upsertCandles(symbol, interval, rows) {
@@ -96,25 +68,10 @@ async function syncOne(symbol, interval) {
   const step = INTERVAL_MS[interval]
   const now = Date.now()
   const { rows } = await dbQuery('SELECT MAX(ts)::float8 AS last FROM candles WHERE symbol=$1 AND interval=$2', [symbol, interval])
-  let cursor = rows[0]?.last ? rows[0].last + step : now - cfg.historyDays * 86400_000
-  cursor = Math.floor(cursor / step) * step
-  let added = 0
-  for (let guard = 0; guard < 60 && cursor + step <= now; guard++) {
-    const raw = await fetchKlines(symbol, interval, Math.floor(cursor / 1000))
-    // 只保留已收盘的 K 线：开盘时间 + 周期 <= 现在
-    const closed = raw
-      .filter((c) => c && c.timestamp != null)
-      .map((c) => ({ ts: c.timestamp * 1000, open: c.open, high: c.high, low: c.low, close: c.close, volume: c.volume }))
-      .filter((c) => c.ts >= cursor && c.ts + step <= now)
-    await upsertCandles(symbol, interval, closed)
-    added += closed.length
-    if (raw.length === 0) break
-    const lastRaw = raw[raw.length - 1].timestamp * 1000
-    const next = lastRaw + step
-    if (next <= cursor) break
-    cursor = next
-    if (raw.length < PAGE) break
-  }
+  const since = rows[0]?.last ? rows[0].last + step : now - cfg.historyDays * 86400_000
+  const closed = (await okx.candlesSince(symbol, interval, since)).filter((c) => c.ts + step <= now)
+  for (let k = 0; k < closed.length; k += 500) await upsertCandles(symbol, interval, closed.slice(k, k + 500))
+  const added = closed.length
   const q = await qualityCheck(symbol, interval)
   const status = q.gaps || q.badOrder || q.invalidBars ? 'warn' : 'ok'
   const message =

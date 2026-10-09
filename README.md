@@ -2,7 +2,7 @@
 
 以「模拟交易优先」为原则的 AI 交易系统：**研究由 AI 提出假设，风控和执行由确定性代码完成，AI 永远不直接下单。**
 
-- 市场：Binance 永续合约（BTC/USDT、ETH/USDT）
+- 市场：OKX 永续合约（BTC/USDT、ETH/USDT）
 - 周期：1h 主周期，4h 确认周期
 - 模式：PAPER（模拟），真钱模式需全部验收通过后才开放
 
@@ -19,6 +19,16 @@
 | 5 | AI 研究员 & 每日复盘 | ⏳ |
 | 6 | 验收清单页 | ⏳ |
 
+## 数据来源与费用
+
+**原则：不消耗 Surf 点数。** 任何会调用 Surf 数据接口或消耗 Surf Studio 点数的改动，必须先告知项目负责人并获批准。
+
+| 数据 | 来源 | 费用 |
+|---|---|---|
+| K 线、实时价格、资金费率、未平仓合约、盘口、指数价 | OKX 公共 API（无需密钥） | 免费 |
+| 恐惧贪婪指数 | alternative.me 公共 API | 免费 |
+| Surf 数据接口 | 当前未使用 | — |
+
 ## 目录结构
 
 ```
@@ -29,7 +39,8 @@ backend/
   lib/config.js        全部参数（标的、周期、市场状态阈值、风控、成本）
   lib/indicators.js    确定性指标：EMA / ATR / ADX / RSI / 布林带
   lib/regime.js        市场状态判定（趋势 / 震荡 / 高波动 / 低流动性 / 不明确）
-  lib/feed.js          行情拉取（重试 + 指数退避）、只存已收盘 K 线、数据质量检查
+  lib/okx.js           免费行情源（OKX 公共 API + alternative.me），超时 + 重试 + 指数退避 + 限频
+  lib/feed.js          行情同步、只存已收盘 K 线、数据质量检查
   lib/jobs.js          每小时任务
   routes/market.js     /api/market/*  看板接口
 frontend/
@@ -57,8 +68,8 @@ docs/                  设计文档与计划
 1. 安装 [Bun](https://bun.sh) 或 Node.js 20+
 2. `cd backend && bun install`，`cd frontend && bun install`
 3. 环境变量：
-   - `SURF_API_KEY`：Surf 数据接口密钥（行情来源）
-   - 数据库连接由 Surf SDK 管理（见 `@surf-ai/sdk/db`）
+   - 行情无需任何密钥（OKX 公共接口）；注意 OKX 在部分地区受限，服务器需选在可访问的地区
+   - 数据库连接目前由 Surf SDK 管理（见 `@surf-ai/sdk/db`），自行部署时需替换为自己的 Postgres
 4. 启动后端：`cd backend && node server.js`；构建前端：`cd frontend && bun run build`
 5. 定时任务由后端进程内置调度，进程需 7×24 在线（建议用 systemd / Docker / pm2 守护）
 

@@ -54,7 +54,7 @@ export default function App() {
             </span>
           </div>
           <div className="flex items-center gap-3 text-xs text-fg-muted">
-            <span>数据来源：Binance 永续合约</span>
+            <span>数据来源：OKX 永续合约（免费公开数据）</span>
             <span>更新于 {o ? fmtTime(o.updatedAt) : '—'}</span>
             <button
               onClick={() => sync.mutate()}

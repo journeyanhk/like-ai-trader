@@ -1,7 +1,7 @@
 // 系统全部参数集中在这里（对应设计文档中的 config.yaml）
 module.exports = {
   mode: 'PAPER', // 第一阶段强制模拟
-  exchange: 'binance',
+  exchange: 'okx', // 行情来自 OKX 免费公共接口（不消耗 Surf 点数）
   marketType: 'swap', // 永续合约
   symbols: ['BTC/USDT', 'ETH/USDT'],
   // 相关资产分组（风控合并计算敞口）

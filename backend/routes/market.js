@@ -1,6 +1,6 @@
 // /api/market —— 行情看板数据
 const { Router } = require('express')
-const { dataApi } = require('@surf-ai/sdk/server')
+const okx = require('../lib/okx') // 免费公开数据源，不消耗 Surf 点数
 const { dbQuery } = require('@surf-ai/sdk/db')
 const cfg = require('../lib/config')
 const feed = require('../lib/feed')
@@ -17,38 +17,6 @@ async function cached(key, ttlMs, fn) {
   const value = await fn()
   cache.set(key, { at: Date.now(), value })
   return value
-}
-
-const safe = (p) => p.catch((e) => ({ __error: e.message }))
-
-async function liveSnapshot(symbol) {
-  const [ticker, perp, depth] = await Promise.all([
-    safe(dataApi.exchange.price({ pair: symbol, type: cfg.marketType, exchange: cfg.exchange })),
-    safe(dataApi.exchange.perp({ pair: symbol, exchange: cfg.exchange })),
-    safe(dataApi.exchange.depth({ pair: symbol, type: cfg.marketType, limit: 20, exchange: cfg.exchange })),
-  ])
-  const t = ticker?.data?.[0] ?? null
-  const f = perp?.data?.funding ?? null
-  const oi = perp?.data?.open_interest ?? null
-  const d = depth?.data?.[0] ?? null
-  return {
-    price: t?.last ?? null,
-    change24hPct: t?.change_24h_pct ?? null,
-    high24h: t?.high_24h ?? null,
-    low24h: t?.low_24h ?? null,
-    volume24hBase: t?.volume_24h_base ?? null,
-    tickerTs: Math.max(t?.timestamp ?? 0, oi?.timestamp ?? 0) * 1000 || null,
-    fundingRate8h: f?.funding_rate_8h ?? f?.funding_rate ?? null,
-    fundingAnnualized: f?.funding_rate_annualized ?? null,
-    nextFunding: f?.next_funding ?? null,
-    markPrice: f?.mark_price ?? null,
-    indexPrice: f?.index_price ?? null,
-    openInterestUsd: oi?.open_interest_usd ?? null,
-    spreadPct: d?.spread_pct ?? null,
-    bidDepth: d?.bid_depth ?? null,
-    askDepth: d?.ask_depth ?? null,
-    errors: [ticker, perp, depth].filter((x) => x?.__error).map((x) => x.__error),
-  }
 }
 
 // 数据健康检查（对应设计文档里的自动暂停条件，此阶段只显示不拦截）
@@ -98,17 +66,12 @@ function ensureFresh(lastBarTs) {
 router.get('/overview', async (_req, res) => {
   try {
     const fearGreed = await cached('fg', 10 * 60_000, async () => {
-      const from = new Date(Date.now() - 31 * 86400_000).toISOString().slice(0, 10)
-      const r = await safe(dataApi.market.fear_greed({ from }))
-      return (r?.data ?? [])
-        .filter((x) => x?.timestamp != null && x?.value != null)
-        .map((x) => ({ ts: x.timestamp * 1000, value: x.value, classification: x.classification ?? '' }))
-        .sort((a, b) => a.ts - b.ts)
+      return okx.fearGreed(31).catch(() => [])
     })
 
     const symbols = await Promise.all(
       cfg.symbols.map(async (symbol) => {
-        const live = await cached(`live:${symbol}`, 15_000, () => liveSnapshot(symbol))
+        const live = await cached(`live:${symbol}`, 15_000, () => okx.snapshot(symbol))
         const regime = await jobs.regimeFor(symbol, { spreadPct: live.spreadPct })
         const lastBarTs = regime.metrics?.barTs ?? null
         return { symbol, live, regime, checks: healthChecks(live, lastBarTs), lastBarTs }
