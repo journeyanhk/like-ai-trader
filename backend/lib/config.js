@@ -67,6 +67,21 @@ module.exports = {
 
   paperStartingEquity: 10000,
 
+  // AI 复盘（第 5 次交付）：AI 只写文字，永远不进入下单流程
+  ai: {
+    provider: 'DeepSeek',
+    baseUrl: 'https://api.deepseek.com',
+    model: 'deepseek-flash',
+    // 美元 / 每 100 万 token；按高峰价估算（偏保守，实际多数时候是一半）
+    priceUsdPerM: { inputHit: 0.006, inputMiss: 0.3, output: 1.2 },
+    maxTokens: 6000,
+    timeoutMs: 120_000,
+    marketCallsPerDay: 5, // 手动「解读当前市场」每天上限
+    maxCallsPerDay: 10, // 所有 AI 调用每天硬上限（含复盘重新生成）
+    monthlyBudgetUsd: 3, // 本月估算花费超过就停止调用
+    newsLimit: 20, // 开启新闻时每天取多少条（1 次 Surf 调用）
+  },
+
   // 模拟盘（第 3 次交付）
   paper: {
     strategies: ['trend_following', 'mean_reversion'], // 默认启用的策略（参数用策略默认值）

@@ -86,7 +86,9 @@ async function history(limit = 50) {
     `SELECT id, ts::float8 AS ts, key, old_value, new_value, reason, source FROM settings_changes ORDER BY id DESC LIMIT $1`,
     [limit],
   )
-  return rows.map((r) => ({ ...r, ts: Number(r.ts), label: DEFS[r.key.replace('risk.', '')]?.label ?? r.key }))
+  const EXTRA = { 'ai.newsEnabled': 'AI 复盘参考新闻（Surf 点数）' }
+  const show = (v) => (v === true ? '开启' : v === false ? '关闭' : v)
+  return rows.map((r) => ({ ...r, old_value: show(r.old_value), new_value: show(r.new_value), ts: Number(r.ts), label: DEFS[r.key.replace('risk.', '')]?.label ?? EXTRA[r.key] ?? r.key }))
 }
 
 module.exports = { ensureLoaded, view, update, resetToDoc, history, DEFS }

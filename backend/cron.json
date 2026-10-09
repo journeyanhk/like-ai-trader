@@ -14,5 +14,13 @@
     "handler": "jobs/monitor.js",
     "enabled": true,
     "timeout": 55
+  },
+  {
+    "id": "daily-review",
+    "name": "每天 UTC 00:05：生成前一天的 AI 复盘",
+    "schedule": "5 0 * * *",
+    "handler": "jobs/review.js",
+    "enabled": true,
+    "timeout": 280
   }
 ]

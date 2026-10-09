@@ -185,3 +185,22 @@ exports.settings_changes = pgTable('settings_changes', {
   reason: text('reason'),
   source: text('source'), // web / system
 })
+
+// ===== 第 5 次交付：AI 复盘 =====
+// 每日复盘 & 市场解读。facts = 代码算好的数字；content = AI 写的文字（只供阅读，不进下单流程）
+exports.trade_reviews = pgTable('trade_reviews', {
+  id: serial('id').primaryKey(),
+  kind: text('kind').notNull(), // daily / market
+  day: text('day').notNull(), // UTC 日期 YYYY-MM-DD（daily = 被复盘的那天）
+  created_at: bigint('created_at', { mode: 'number' }).notNull(),
+  trigger: text('trigger'), // cron / catchup / manual
+  status: text('status').notNull(), // ok / no_ai / error
+  facts: jsonb('facts'),
+  content: jsonb('content'),
+  model: text('model'),
+  usage: jsonb('usage'),
+  cost_usd: doublePrecision('cost_usd'),
+  news: jsonb('news'),
+  news_credits: integer('news_credits'),
+  error: text('error'),
+})

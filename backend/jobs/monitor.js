@@ -17,4 +17,6 @@ exports.handler = async () => {
       catchingUp = false
     }
   }
+  // 每日复盘如果因为重启错过了，00:10 之后补生成（每天只检查一次，不阻塞巡检）
+  require('../lib/review').ensureYesterday().catch((e) => console.error('[review] 补生成失败', e.message))
 }

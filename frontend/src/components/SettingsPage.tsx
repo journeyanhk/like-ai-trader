@@ -4,6 +4,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { ShieldCheck, Lock, RotateCcw } from 'lucide-react'
 import { api } from '@/lib/api'
 import { fmtTime, REGIME_STYLE } from '@/lib/market'
+import { AiSettingsCard } from '@/components/ReviewPage'
 
 const card = 'border border-border-strong rounded-lg bg-bg-base-opaque p-4'
 
@@ -21,7 +22,7 @@ interface SettingsData {
     strategies: { name: string; label: string; version: string; defaults: Record<string, number>; paramLabels: Record<string, string>; description: string }[]
   }
 }
-interface Change { id: number; ts: number; key: string; label: string; old_value: number; new_value: number; reason: string; source: string }
+interface Change { id: number; ts: number; key: string; label: string; old_value: number | string; new_value: number | string; reason: string; source: string }
 
 const REGIME_LABEL: Record<string, string> = { trend_up: '上涨趋势', trend_down: '下跌趋势', range: '震荡', high_vol: '高波动', low_liquidity: '低流动性', unclear: '不明确' }
 const STRAT_LABEL: Record<string, string> = { trend_following: '趋势跟随', mean_reversion: '均值回归' }
@@ -143,6 +144,8 @@ export default function SettingsPage() {
         </div>
         {msg && <div className={`mt-2 text-sm ${msg.ok ? 'text-[#10b981]' : 'text-[#ef4444]'}`}>{msg.text}</div>}
       </div>
+
+      <AiSettingsCard />
 
       <div className={card}>
         <Title hint="每一次修改：什么时候、哪个参数、从多少改到多少、为什么。">修改记录</Title>

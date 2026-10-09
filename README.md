@@ -16,7 +16,7 @@
 | 2 | 回测实验室（成本模型、滚动验证、参数敏感性） | ✅ 已完成 |
 | 3 | 风控大脑 + 模拟自动交易 + 紧急停止 | ✅ 已完成 |
 | 4 | 交易驾驶舱（净值、持仓、订单、告警、设置） | ✅ 已完成 |
-| 5 | AI 研究员 & 每日复盘 | ⏳ |
+| 5 | AI 研究员 & 每日复盘 | ✅ 已完成 |
 | 6 | 验收清单页 | ⏳ |
 
 ## 数据来源与费用
@@ -27,7 +27,8 @@
 |---|---|---|
 | K 线、实时价格、资金费率、未平仓合约、盘口、指数价 | OKX 公共 API（无需密钥） | 免费 |
 | 恐惧贪婪指数 | alternative.me 公共 API | 免费 |
-| Surf 数据接口 | 当前未使用 | — |
+| AI 复盘文字 | DeepSeek（deepseek-flash，你自己的账户） | 约 $0.004 / 次，月预算上限 $3 |
+| Surf 新闻接口 | 仅当「复盘参考新闻」开关打开时，每份复盘 1 次（默认关闭） | 消耗 Surf 点数，逐次记录 |
 
 ## 目录结构
 
@@ -37,7 +38,7 @@ backend/
   cron.json            定时任务：每小时第 2 分钟（行情 → 市场状态 → 模拟交易循环）；每分钟风控巡检
   db/schema.js         数据表：candles, regime_snapshots, events, sync_state, funding_rates, backtest_runs,
                        paper_account, paper_positions, paper_orders, paper_trades, paper_equity, paper_cycles,
-                       settings, settings_changes
+                       settings, settings_changes, trade_reviews
   lib/config.js        全部参数（标的、周期、市场状态阈值、风控、成本）
   lib/indicators.js    确定性指标：EMA / ATR / ADX / RSI / 布林带
   lib/regime.js        市场状态判定（趋势 / 震荡 / 高波动 / 低流动性 / 不明确）
@@ -50,6 +51,8 @@ backend/
   lib/risk.js          风控引擎（纯函数）：仓位计算、敞口上限、日亏、回撤、策略失效、数据检查、开仓审核
   lib/orders.js        订单状态机 + 幂等 clientOrderId
   lib/settings.js      可调风控参数：只能比文档更严格，必须填写原因，每次修改留痕
+  lib/ai.js            AI 调用（DeepSeek）：次数上限、月预算、费用估算、余额查询
+  lib/review.js        AI 复盘：代码计算当日事实 → AI 写点评；市场解读；新闻开关
   lib/paper.js         模拟交易引擎：每小时交易循环、每分钟巡检、自动暂停、紧急停止、对账、心跳
   jobs/monitor.js      每分钟风控巡检入口
   tests/               单元测试（cd backend && bun run test）
@@ -58,6 +61,8 @@ backend/
   routes/backtest.js   /api/backtest/*  回测接口
   routes/paper.js      /api/paper/*  模拟交易：状态、订单（含状态历史）、成交、决策记录、统计、紧急停止 / 恢复 / 解锁
   routes/settings.js   /api/settings/*  查看与调整风控参数、修改记录
+  routes/review.js     /api/review/*  每日复盘、市场解读、用量与余额、新闻开关
+  jobs/review.js       每天 UTC 00:05 生成前一天的复盘（错过会在 00:10 后自动补）
 frontend/
   src/App.tsx          主界面
   src/components/      图表与面板（CockpitPage 驾驶舱、SettingsPage 设置、PaperPage 模拟交易…）
@@ -117,6 +122,15 @@ docs/                  设计文档与计划
 
 - 驾驶舱：当前状态、权益、总收益、最大回撤、今日盈亏、已运行天数（目标 30 天）；净值曲线 + 回撤图；持仓与浮动盈亏；按策略 / 标的 / 方向的绩效统计；全部成交；订单（可按状态筛选，展开看每一步状态变化）；告警中心（按级别、类型筛选，可翻页）。
 - 设置：6 个风控参数可调，规则是 **只能比设计文档更严格，不能放宽**（文档值即上限）；每次修改必须写原因，自动记入修改记录并产生一条告警事件；可一键恢复文档默认值。其他参数（标的、成本、市场状态阈值、暂停条件、策略参数）只读展示。
+
+## AI 复盘（第 5 次交付）
+
+- **边界**：所有数字由代码计算；AI 只把数字写成中文点评和「待验证的改进点」。AI 输出只存档，**不进入下单流程**。
+- **每日复盘**：每天 UTC 00:05（北京时间 08:05）自动生成前一天的复盘；也可以手动生成 / 重新生成（保留历史版本）。
+- **市场解读**：手动点按钮调用，每天最多 5 次。
+- **费用保护**：所有 AI 调用每天最多 10 次；本月估算花费超过 3 美元自动停止；没有 Key 或调用失败时照样保存数字部分。
+- **新闻**：设置页开关，默认关闭；开启后每份复盘调用 1 次 Surf 新闻接口，消耗的点数记录在该复盘上。
+- **配置**：在 `backend/.env` 写入 `DEEPSEEK_API_KEY=...`（该文件不会提交到 GitHub）。
 
 ## 自行部署
 
