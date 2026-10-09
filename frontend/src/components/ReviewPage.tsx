@@ -15,12 +15,14 @@ interface AiStatus {
   provider: string
   model: string
   hasKey: boolean
+  key: { masked: string | null; source: 'web' | 'file' | null }
   usage: { callsToday: number; marketToday: number; callsMonth: number; costMonthUsd: number; newsCreditsMonth: number; limits: { maxCallsPerDay: number; marketCallsPerDay: number; monthlyBudgetUsd: number } }
   balance: { currency: string; total: number; available: boolean } | null
   settings: { newsEnabled: boolean }
   busy: boolean
   schedule: string
 }
+interface ModelOpt { id: string; label: string; price: { inputMiss: number; output: number }; knownPrice: boolean }
 interface DailyItem { id: number; day: string; created_at: number; status: string; trigger: string; cost_usd: number | null; headline: string | null; day_pnl: number | null; closed: number | null }
 interface Trade { symbol: string; strategy: string; side: string; entryPx: number; exitPx: number; pnl: number; r: number | null; holdHours: number; exitReason: string; regimeAtEntry: string }
 interface StratFact { name: string; enabled: boolean; disabledReason: string | null; today: { trades: number; pnl: number; winRatePct: number | null }; cumulative: { trades: number; pnl: number; winRatePct: number | null; profitFactor: number | null } }
@@ -597,11 +599,8 @@ export function AiSettingsCard() {
         <Bot size={16} className="text-brand-100" /> AI 复盘
       </h3>
       <p className="text-[11px] text-fg-muted mt-0.5 mb-3">AI 只写复盘文字，不进入下单流程。费用走你的 DeepSeek 账户。</p>
-      <div className="grid md:grid-cols-3 gap-3 text-sm mb-3">
-        <div className="rounded-md bg-bg-chat px-3 py-2">
-          <div className="text-[11px] text-fg-muted">模型</div>
-          {s.provider} · {s.model} {s.hasKey ? '' : '（未配置 Key）'}
-        </div>
+      <AiConfigForm s={s} />
+      <div className="grid md:grid-cols-2 gap-3 text-sm my-3">
         <div className="rounded-md bg-bg-chat px-3 py-2">
           <div className="text-[11px] text-fg-muted">费用保护</div>
           每天最多 {s.usage.limits.maxCallsPerDay} 次 · 市场解读 {s.usage.limits.marketCallsPerDay} 次 · 月预算 ${s.usage.limits.monthlyBudgetUsd}
@@ -639,6 +638,75 @@ export function AiSettingsCard() {
         </div>
         {save.isError && <div className="text-xs text-[#ef4444] mt-1">{(save.error as Error).message}</div>}
       </div>
+    </div>
+  )
+}
+
+function AiConfigForm({ s }: { s: AiStatus }) {
+  const qc = useQueryClient()
+  const models = useQuery<ModelOpt[]>({ queryKey: ['review-models', s.key.masked], queryFn: () => fetch(api('review/models')).then((r) => r.json()) })
+  const [key, setKey] = useState('')
+  const [model, setModel] = useState(s.model)
+  const [reason, setReason] = useState('')
+  useEffect(() => setModel(s.model), [s.model])
+  const save = useMutation({
+    mutationFn: () => postJSON('review/ai-config', { apiKey: key.trim() || undefined, model: model !== s.model ? model : undefined, reason }),
+    onSuccess: () => {
+      setKey('')
+      setReason('')
+      qc.invalidateQueries({ predicate: (x) => String(x.queryKey[0]).startsWith('review') })
+      qc.invalidateQueries({ queryKey: ['settings-history'] })
+    },
+  })
+  const dirty = !!key.trim() || model !== s.model
+  const perCall = (m?: ModelOpt) => (m ? (2000 * m.price.inputMiss + 3000 * m.price.output) / 1e6 : null)
+  const sel = models.data?.find((m) => m.id === model)
+  return (
+    <div className="rounded-md border border-border-base px-3 py-3 space-y-3">
+      <div className="grid md:grid-cols-2 gap-3">
+        <label className="block">
+          <div className="text-xs font-semibold mb-1">DeepSeek API Key</div>
+          <div className="text-[11px] text-fg-muted mb-1">
+            当前：{s.key.masked ? <span className="font-mono">{s.key.masked}</span> : <span className="text-[#ef4444]">未配置</span>}
+            {s.key.source === 'web' ? '（在本页设置）' : s.key.source === 'file' ? '（服务器配置文件）' : ''}
+          </div>
+          <input
+            type="password"
+            autoComplete="off"
+            value={key}
+            onChange={(e) => setKey(e.target.value)}
+            placeholder="粘贴新的 Key（sk-…），不换就留空"
+            className="w-full bg-bg-chat border border-border-strong rounded-md px-2 py-1.5 text-sm font-mono"
+          />
+          <div className="text-[11px] text-fg-muted mt-1">保存前会先向 DeepSeek 验证 Key 是否有效。Key 只保存在服务器上，页面和修改记录里只显示打码后的样子。</div>
+        </label>
+        <label className="block">
+          <div className="text-xs font-semibold mb-1">模型</div>
+          <div className="text-[11px] text-fg-muted mb-1">当前：{s.model}</div>
+          <select value={model} onChange={(e) => setModel(e.target.value)} className="w-full bg-bg-chat border border-border-strong rounded-md px-2 py-1.5 text-sm">
+            {(models.data ?? [{ id: s.model, label: s.model } as ModelOpt]).map((m) => (
+              <option key={m.id} value={m.id}>
+                {m.label}
+              </option>
+            ))}
+          </select>
+          <div className="text-[11px] text-fg-muted mt-1">
+            {sel ? `估算每次约 $${perCall(sel)!.toFixed(4)}（按高峰价）${sel.knownPrice ? '' : '；这个模型价格未知，按最贵的估算'}` : '模型列表由 DeepSeek 实时提供'}
+          </div>
+        </label>
+      </div>
+      <div className="flex flex-wrap items-center gap-2">
+        <input value={reason} onChange={(e) => setReason(e.target.value)} placeholder="修改原因（必填，会记录）" className="flex-1 min-w-[200px] bg-bg-chat border border-border-strong rounded-md px-2 py-1.5 text-xs" />
+        <button
+          onClick={() => save.mutate()}
+          disabled={!dirty || !reason.trim() || save.isPending}
+          className="px-3 py-1.5 rounded-md bg-brand-100 text-white text-xs font-semibold disabled:opacity-50"
+        >
+          {save.isPending ? '验证并保存中…' : '保存 AI 设置'}
+        </button>
+      </div>
+      {save.isError && <div className="text-xs text-[#ef4444]">{(save.error as Error).message}</div>}
+      {save.isSuccess && <div className="text-xs text-[#10b981]">已保存，下一次 AI 调用起生效。</div>}
     </div>
   )
 }

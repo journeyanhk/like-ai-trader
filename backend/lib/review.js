@@ -333,7 +333,7 @@ async function generateDaily(day, trigger = 'manual') {
       await feed.logEvent('info', 'review', `${day} 每日复盘已生成（AI 费用约 $${r.costUsd.toFixed(4)}${newsCredits ? `，新闻消耗 Surf ${newsCredits} 点` : ''}）`, { id })
       return { ok: true, id, status: 'ok' }
     } catch (e) {
-      const id = await save({ kind: 'daily', day, trigger, status: 'error', facts, model: cfg.ai.model, error: e.message, news: news?.items, newsCredits })
+      const id = await save({ kind: 'daily', day, trigger, status: 'error', facts, model: ai.model(), error: e.message, news: news?.items, newsCredits })
       await feed.logEvent('warn', 'review', `${day} 每日复盘 AI 调用失败：${e.message}（数字部分已保存）`, { id })
       return { ok: false, id, status: 'error', error: e.message }
     }
@@ -352,7 +352,7 @@ async function generateMarket() {
     const id = await save({ kind: 'market', day, trigger: 'manual', status: 'ok', facts, content: r.json, model: r.model, usage: { ...r.usage, ms: r.ms }, costUsd: r.costUsd })
     return { ok: true, id }
   } catch (e) {
-    await save({ kind: 'market', day, trigger: 'manual', status: 'error', facts, model: cfg.ai.model, error: e.message })
+    await save({ kind: 'market', day, trigger: 'manual', status: 'error', facts, model: ai.model(), error: e.message })
     return { ok: false, error: e.message }
   }
 }

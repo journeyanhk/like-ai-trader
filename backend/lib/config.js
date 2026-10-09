@@ -1,6 +1,8 @@
 // 系统全部参数集中在这里（对应设计文档中的 config.yaml）
 module.exports = {
   mode: 'PAPER', // 第一阶段强制模拟
+  // 实盘：验收清单全部通过前不开放；首期资金不超过总资金 5%
+  live: { enabled: false, maxInitialCapitalPct: 5 },
   exchange: 'okx', // 行情来自 OKX 免费公共接口（不消耗 Surf 点数）
   marketType: 'swap', // 永续合约
   symbols: ['BTC/USDT', 'ETH/USDT'],
@@ -71,15 +73,23 @@ module.exports = {
   ai: {
     provider: 'DeepSeek',
     baseUrl: 'https://api.deepseek.com',
-    model: 'deepseek-flash',
-    // 美元 / 每 100 万 token；按高峰价估算（偏保守，实际多数时候是一半）
-    priceUsdPerM: { inputHit: 0.006, inputMiss: 0.3, output: 1.2 },
+    model: 'deepseek-flash', // 默认模型；可在设置页修改（价格表见 lib/ai.js）
     maxTokens: 6000,
     timeoutMs: 120_000,
     marketCallsPerDay: 5, // 手动「解读当前市场」每天上限
     maxCallsPerDay: 10, // 所有 AI 调用每天硬上限（含复盘重新生成）
     monthlyBudgetUsd: 3, // 本月估算花费超过就停止调用
     newsLimit: 20, // 开启新闻时每天取多少条（1 次 Surf 调用）
+  },
+
+  // 验收标准（设计文档）
+  acceptance: {
+    oosSharpe: 1.0,
+    oosMaxDrawdownPct: 15,
+    oosTrades: 100,
+    paperDays: 30,
+    paperVsBacktestDevPct: 20,
+    devMinBaseReturnPct: 1, // 偏差分母下限：同期回测收益绝对值小于 1% 时按 1% 计算，避免除以接近 0 的数
   },
 
   // 模拟盘（第 3 次交付）

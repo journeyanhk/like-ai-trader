@@ -9,6 +9,7 @@ import PaperPage from '@/components/PaperPage'
 import CockpitPage from '@/components/CockpitPage'
 import SettingsPage from '@/components/SettingsPage'
 import ReviewPage from '@/components/ReviewPage'
+import AcceptPage from '@/components/AcceptPage'
 
 const TABS = [
   { key: 'cockpit', label: '交易驾驶舱', ready: true, step: 4 },
@@ -17,7 +18,7 @@ const TABS = [
   { key: 'backtest', label: '回测实验室', ready: true, step: 2 },
   { key: 'review', label: 'AI 复盘', ready: true, step: 5 },
   { key: 'settings', label: '设置', ready: true, step: 4 },
-  { key: 'accept', label: '验收清单', ready: false, step: 6 },
+  { key: 'accept', label: '验收清单', ready: true, step: 6 },
 ]
 
 export default function App() {
@@ -103,6 +104,7 @@ export default function App() {
         {tab === 'cockpit' && <CockpitPage goPaper={() => setTab('paper')} />}
         {tab === 'settings' && <SettingsPage />}
         {tab === 'review' && <ReviewPage />}
+        {tab === 'accept' && <AcceptPage />}
 
         <footer className="text-[11px] text-fg-muted pt-2 pb-6">
           市场状态每小时自动重新计算（K 线收盘后 2 分钟）。所有数据来自免费公开接口，回测为本地计算，不消耗 Surf 点数。AI 复盘使用你的 DeepSeek 账户，AI 不参与下单。交易全部为模拟，不涉及真钱。

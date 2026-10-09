@@ -333,7 +333,7 @@ async function riskSweep(t = now()) {
 }
 
 // ---------- 自动暂停 ----------
-async function setPause(key, active, detail) {
+async function setPause(key, active, detail, extra = null) {
   const a = S.acct
   const has = a.pause_keys.includes(key)
   if (active) {
@@ -341,7 +341,7 @@ async function setPause(key, active, detail) {
     if (!has) {
       a.pause_keys = [...a.pause_keys, key]
       await saveAcct()
-      await feed.logEvent('error', 'auto_pause', `自动暂停开新仓：${PAUSE[key].label}${detail ? `（${detail}）` : ''}`, { key, detail })
+      await feed.logEvent(extra?.drill ? 'warn' : 'error', 'auto_pause', `${extra?.drill ? '【演练】' : ''}自动暂停开新仓：${PAUSE[key].label}${detail ? `（${detail}）` : ''}`, { key, detail, ...(extra || {}) })
     }
     return
   }
@@ -711,6 +711,22 @@ async function setStrategy(name, enabled) {
   })
 }
 
+// ---------- 故障演练：人为触发一个自动暂停条件，检验暂停与恢复流程 ----------
+// 自动类条件：由每分钟巡检在连续 5 次正常后自动恢复（走真实恢复流程）
+// 人工类条件：需要在「模拟交易」页点「恢复运行」
+async function drillPause(key) {
+  return withLock(async () => {
+    await load()
+    if (!PAUSE[key]) return { ok: false, error: '没有这个暂停条件' }
+    if (S.acct.status !== 'running') return { ok: false, error: '系统当前不是正常运行状态，不能演练' }
+    if (S.acct.pause_keys.length) return { ok: false, error: '已有暂停条件在生效，等它恢复后再演练' }
+    const m = (now() % H1) / 60_000
+    if (m < 8 || m > 50) return { ok: false, error: '为了不影响整点交易，演练只能在每小时第 8–50 分钟进行' }
+    await setPause(key, true, '故障演练，人为触发', { drill: true })
+    return { ok: true, auto: PAUSE[key].auto }
+  })
+}
+
 // ---------- 启动：对账 + 心跳检查 ----------
 async function startup() {
   return withLock(async () => {
@@ -825,4 +841,4 @@ function needsCycle() {
 // 内部函数仅供测试脚本使用
 const _t = { S, openPosition, closePosition, placeOrder, sweepUnknownOrders, riskSweep, saveAcct, withLock }
 
-module.exports = { _t, needsCycle, load, monitor, runCycle, emergencyStop, resume, unlock, setStrategy, startup, snapshot, reconcile, PAUSE }
+module.exports = { _t, drillPause, needsCycle, load, monitor, runCycle, emergencyStop, resume, unlock, setStrategy, startup, snapshot, reconcile, PAUSE }

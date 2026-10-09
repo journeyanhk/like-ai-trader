@@ -252,4 +252,4 @@ async function startRun(req) {
   return { id, running: true }
 }
 
-module.exports = { runLab, startRun }
+module.exports = { runLab, startRun, loadData }
