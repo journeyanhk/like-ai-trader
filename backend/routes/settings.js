@@ -26,7 +26,7 @@ router.get('/', async (_req, res) => {
           heartbeatMinutes: cfg.paper.heartbeatEveryMs / 60000,
           heartbeatMissing: cfg.paper.heartbeatMissing,
         },
-        invalidation: { trades: cfg.paper.invalidationTrades, pf: cfg.paper.invalidationPf },
+        invalidation: { trades: cfg.paper.invalidationTrades, pf: cfg.paper.invalidationPf, minDays: cfg.paper.invalidationMinDays },
         strategies: Object.values(STRATEGIES).map((s) => ({ name: s.name, label: s.label, version: s.version, defaults: s.defaults, paramLabels: s.paramLabels, description: s.description })),
       },
     })

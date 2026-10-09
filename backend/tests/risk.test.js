@@ -23,10 +23,17 @@ test('止损太近时被单标的 50% 上限裁剪', () => {
   assert.ok(s.riskAmt < 50)
 })
 
-test('BTC/ETH 合并计算敞口：已有 BTC 6000 时 ETH 最多 4000', () => {
-  const positions = { 'BTC/USDT': { qty: 0.1, entry_px: 60000 } }
-  const s = risk.sizePosition({ equity: 10000, entryPx: 100, stopPx: 99.9, symbol: 'ETH/USDT', positions, marks: { 'BTC/USDT': 60000 } })
-  assert.ok(Math.abs(s.notional - 4000) < 1e-6)
+test('5 币同组，组上限 60%：已有 BTC 4000 时 DOGE 最多 2000', () => {
+  const positions = { 'BTC/USDT': { qty: 0.1, entry_px: 40000 } }
+  const s = risk.sizePosition({ equity: 10000, entryPx: 100, stopPx: 99.9, symbol: 'DOGE/USDT', positions, marks: { 'BTC/USDT': 40000 } })
+  assert.ok(Math.abs(s.notional - 2000) < 1e-6)
+  assert.match(s.limitedBy, /相关资产组合并上限 60%/)
+})
+
+test('组内已满 60%（BTC 3000 + ETH 3000）→ SOL 仓位为 0', () => {
+  const positions = { 'BTC/USDT': { qty: 0.05, entry_px: 60000 }, 'ETH/USDT': { qty: 1, entry_px: 3000 } }
+  const s = risk.sizePosition({ equity: 10000, entryPx: 100, stopPx: 90, symbol: 'SOL/USDT', positions, marks: { 'BTC/USDT': 60000, 'ETH/USDT': 3000 } })
+  assert.equal(s.qty, 0)
 })
 
 test('总敞口已满时仓位为 0', () => {
@@ -133,4 +140,49 @@ test('幂等键：同一信号生成同一个 clientOrderId', () => {
   const b = orders.clientOrderId('trend_following', 123, 'BTC/USDT', 'open')
   assert.equal(a, b)
   assert.equal(a, 'trend_following-123-BTCUSDT-open')
+})
+
+// ---------- P1-1 合约取整 ----------
+const sim = require('../lib/simulate')
+test('BTC 按张取整：0.0305504 BTC → 3.05 张 = 0.0305 BTC（只向下取整）', () => {
+  const r = sim.roundQty('BTC/USDT', 0.0305504, 63000)
+  assert.equal(r.contracts, 3.05)
+  assert.equal(r.qty, 0.0305)
+  assert.equal(r.check.ok, true)
+})
+test('DOGE 1 张 = 1000 DOGE：1234.5 DOGE → 1.23 张 = 1230 DOGE', () => {
+  const r = sim.roundQty('DOGE/USDT', 1234.5, 0.1)
+  assert.equal(r.contracts, 1.23)
+  assert.equal(r.qty, 1230)
+})
+test('不足最小下单量（ETH 0.0009 = 0.009 张 < 0.01 张）→ 不交易并给出原因', () => {
+  const r = sim.roundQty('ETH/USDT', 0.0009, 2000)
+  assert.equal(r.qty, 0)
+  assert.equal(r.check.ok, false)
+  assert.match(r.check.detail, /最小 0\.01 张/)
+})
+test('没有合约规格的币 → 不交易', () => {
+  const r = sim.roundQty('ABC/USDT', 5, 1)
+  assert.equal(r.qty, 0)
+  assert.equal(r.check.ok, false)
+})
+
+// ---------- P1-3 策略失效：≥20 笔且 ≥30 天 ----------
+const losing = Array.from({ length: 20 }, (_, k) => ({ pnl: k % 4 === 0 ? 10 : -10 })) // 盈亏比 0.33
+test('20 笔亏损但只运行 10 天 → 不下线', () => {
+  const r = risk.strategyInvalidation(losing, cfg, { total: 20, days: 10 })
+  assert.equal(r.invalid, false)
+  assert.equal(r.eligible, false)
+})
+test('运行 40 天但只有 15 笔 → 不下线', () => {
+  const r = risk.strategyInvalidation(losing.slice(0, 15), cfg, { total: 15, days: 40 })
+  assert.equal(r.invalid, false)
+})
+test('≥20 笔 且 ≥30 天，最近 20 笔盈亏比 < 1 → 下线', () => {
+  const r = risk.strategyInvalidation(losing, cfg, { total: 25, days: 31 })
+  assert.equal(r.invalid, true)
+})
+test('≥20 笔 且 ≥30 天，但盈亏比 ≥ 1 → 不下线', () => {
+  const r = risk.strategyInvalidation(losing.map((t) => ({ pnl: -t.pnl })), cfg, { total: 25, days: 31 })
+  assert.equal(r.invalid, false)
 })

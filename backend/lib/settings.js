@@ -9,6 +9,7 @@ const DEFS = {
   dailyLossLimitPct: { label: '单日亏损上限（%）', min: 0.5, max: 2, step: 0.1, unit: '%', help: '当天（UTC）亏到这个比例，当天不再开新仓。' },
   maxDrawdownPct: { label: '最大回撤锁定（%）', min: 3, max: 10, step: 0.5, unit: '%', help: '从最高点回撤到这个比例，全部平仓并锁定，需要你手动解锁。' },
   maxGrossExposurePct: { label: '总仓位上限（占权益 %）', min: 10, max: 100, step: 5, unit: '%', help: '所有币种的仓位加起来不超过权益的多少。' },
+  maxGroupExposurePct: { label: '相关币种合计上限（%）', min: 10, max: 100, step: 5, unit: '%', help: '5 个币走势高度相关，算作一组，合计仓位不超过权益的多少。' },
   maxSymbolExposurePct: { label: '单个币仓位上限（%）', min: 10, max: 50, step: 5, unit: '%', help: '单个币的仓位不超过权益的多少。' },
   maxLeverage: { label: '杠杆上限（倍）', min: 1, max: 3, step: 0.5, unit: 'x', help: '总仓位 ÷ 权益的上限。' },
 }

@@ -37,7 +37,7 @@ function sizePosition({ equity, entryPx, stopPx, symbol, positions = {}, marks =
     { key: `总敞口上限 ${r.maxGrossExposurePct}%`, notional: equity * (r.maxGrossExposurePct / 100) - others },
     { key: `杠杆上限 ${r.maxLeverage}x`, notional: equity * r.maxLeverage - others },
   ]
-  if (group) caps.push({ key: `相关资产组合并上限 ${r.maxGrossExposurePct}%`, notional: equity * (r.maxGrossExposurePct / 100) - groupOthers })
+  if (group) caps.push({ key: `相关资产组合并上限 ${r.maxGroupExposurePct ?? r.maxGrossExposurePct}%`, notional: equity * ((r.maxGroupExposurePct ?? r.maxGrossExposurePct) / 100) - groupOthers })
   const best = caps.reduce((a, b) => (b.notional < a.notional ? b : a))
   const notional = Math.max(0, best.notional)
   const qty = notional / entryPx
@@ -54,14 +54,22 @@ function drawdown(equity, peak, conf = cfg) {
   return { ddPct: dd * 100, hit: dd >= conf.risk.maxDrawdownPct / 100 }
 }
 
-/** 策略失效：最近 N 笔交易盈亏比 < 阈值 → 自动下线 */
-function strategyInvalidation(trades, conf = cfg) {
+/**
+ * 策略失效（P1-3）：累计 ≥ invalidationTrades 笔 且 运行 ≥ invalidationMinDays 天之后，
+ * 才看最近 invalidationTrades 笔的盈亏比；< 阈值 → 自动下线。
+ * age = { total: 累计笔数, days: 自第一笔开仓起的天数 }；不传则只按笔数判断（兼容旧调用）
+ */
+function strategyInvalidation(trades, conf = cfg, age = null) {
   const n = conf.paper.invalidationTrades
+  const minDays = conf.paper.invalidationMinDays ?? 0
   const last = trades.slice(-n)
   const win = last.filter((t) => t.pnl > 0).reduce((a, t) => a + t.pnl, 0)
   const loss = -last.filter((t) => t.pnl <= 0).reduce((a, t) => a + t.pnl, 0)
   const pf = loss ? win / loss : win ? 99 : 0
-  return { n: last.length, need: n, pf, invalid: last.length >= n && pf < conf.paper.invalidationPf }
+  const total = age?.total ?? trades.length
+  const days = age?.days ?? Infinity
+  const eligible = total >= n && last.length >= n && days >= minDays
+  return { n: last.length, need: n, total, days, minDays, eligible, pf, invalid: eligible && pf < conf.paper.invalidationPf }
 }
 
 /**

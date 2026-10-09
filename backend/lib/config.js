@@ -7,8 +7,17 @@ module.exports = {
   marketType: 'swap', // 永续合约
   // 第 7 次交付：从 2 个扩到 5 个币，靠分散提高稳定性（数据仍来自 OKX 免费接口）
   symbols: ['BTC/USDT', 'ETH/USDT', 'SOL/USDT', 'XRP/USDT', 'DOGE/USDT'],
-  // 相关资产分组（风控合并计算敞口）
-  correlationGroups: { majors: ['BTC/USDT', 'ETH/USDT'] },
+  // 相关资产分组（风控合并计算敞口）：P1-2 五个币高度相关，归为同一组，组合计上限见 risk.maxGroupExposurePct
+  correlationGroups: { crypto: ['BTC/USDT', 'ETH/USDT', 'SOL/USDT', 'XRP/USDT', 'DOGE/USDT'] },
+  // P1-1 OKX 永续合约规格（2026-10-09 从 public/instruments 抓取；scripts/check-contracts.js 可核对是否变化）
+  // 下单数量单位是「张」：1 张 = ctVal 个币；张数必须是 lotSz 的整数倍，且不小于 minSz
+  contracts: {
+    'BTC/USDT': { instId: 'BTC-USDT-SWAP', ctVal: 0.01, lotSz: 0.01, minSz: 0.01 },
+    'ETH/USDT': { instId: 'ETH-USDT-SWAP', ctVal: 0.1, lotSz: 0.01, minSz: 0.01 },
+    'SOL/USDT': { instId: 'SOL-USDT-SWAP', ctVal: 1, lotSz: 0.01, minSz: 0.01 },
+    'XRP/USDT': { instId: 'XRP-USDT-SWAP', ctVal: 100, lotSz: 0.01, minSz: 0.01 },
+    'DOGE/USDT': { instId: 'DOGE-USDT-SWAP', ctVal: 1000, lotSz: 0.01, minSz: 0.01 },
+  },
   mainInterval: '1h',
   confirmInterval: '4h',
   historyDays: 730, // 回补 2 年历史（滚动验证需要覆盖牛市、熊市、震荡）
@@ -47,6 +56,7 @@ module.exports = {
     maxDrawdownPct: 10,
     maxGrossExposurePct: 100,
     maxSymbolExposurePct: 50,
+    maxGroupExposurePct: 60, // 同一相关组（5 个币）合计仓位不超过权益 60%
     maxLeverage: 3,
   },
 
@@ -104,5 +114,6 @@ module.exports = {
     autoResumeHealthyChecks: 5, // 数据类暂停：连续 5 次（约 5 分钟）检查正常后自动恢复
     invalidationTrades: 20, // 策略失效：最近 20 笔盈亏比 < 1.0 自动下线
     invalidationPf: 1.0,
+    invalidationMinDays: 30, // P1-3：且策略运行满 30 天才评估（避免短期运气差就下线）
   },
 }

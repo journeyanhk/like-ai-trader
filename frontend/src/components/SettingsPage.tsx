@@ -18,7 +18,7 @@ interface SettingsData {
     regime: Record<string, number>
     allowedStrategies: Record<string, string[]>
     pause: { staleDataSeconds: number; priceSourceMaxDeviationPct: number; orderUnknownSeconds: number; maxApiErrors: number; autoResumeHealthyChecks: number; heartbeatMinutes: number; heartbeatMissing: number }
-    invalidation: { trades: number; pf: number }
+    invalidation: { trades: number; pf: number; minDays?: number }
     strategies: { name: string; label: string; version: string; defaults: Record<string, number>; paramLabels: Record<string, string>; description: string }[]
   }
 }
@@ -192,7 +192,7 @@ export default function SettingsPage() {
               ['手续费', `吃单 ${ro.costs.takerPct}%，挂单 ${ro.costs.makerPct}%（模拟盘按吃单计）`],
               ['滑点', `${ro.costs.slippageBps} 个基点（${ro.costs.slippageBps / 100}%）`],
               ['资金费', `按 OKX 真实费率；缺历史时保守按每 8 小时 ${ro.costs.assumedFundingPct8h}%`],
-              ['策略失效', `最近 ${ro.invalidation.trades} 笔盈亏比 < ${ro.invalidation.pf} 自动下线`],
+              ['策略失效', `累计满 ${ro.invalidation.trades} 笔且运行满 ${ro.invalidation.minDays ?? 30} 天后，最近 ${ro.invalidation.trades} 笔盈亏比 < ${ro.invalidation.pf} 自动下线`],
             ]}
           />
         </div>

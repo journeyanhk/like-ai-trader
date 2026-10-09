@@ -81,6 +81,7 @@ function newState({ startEquity = cfg.paperStartingEquity, startTs = null, enabl
     lastCloseTs: null,
     seq: 0,
     fills: [],
+    rejects: [], // 合约取整后不足最小下单量而放弃的开仓（原因）
     trades: [],
     fundings: [],
     logOn: log,
@@ -105,9 +106,21 @@ function ledger(st, marks) {
   return { cash: st.cash, realized_pnl: st.totals.realized, funding_pnl: -st.totals.funding, fees_paid: st.totals.fees, unrealized: u, equity: st.cash + u }
 }
 
-// ---------- 合约取整（P1-1 在这里接入 OKX ctVal/lotSz/minSz）----------
+// ---------- 合约取整（P1-1：OKX ctVal / lotSz / minSz）----------
+// 币数量 → 张数 = qty / ctVal，向下取整到 lotSz 的整数倍（只会变小，不会超出风控算出的仓位）；
+// 取整后张数 < minSz → 不交易，返回原因。
+const dec = (x) => (String(x).split('.')[1] || '').length
 function roundQty(symbol, qty, px, conf = cfg) {
-  return { qty, check: null }
+  const c = conf.contracts?.[symbol]
+  if (!c) return { qty: 0, contracts: null, check: { key: 'contract', label: '合约规格', ok: false, detail: `没有 ${symbol} 的合约规格（ctVal/lotSz/minSz），不交易` } }
+  const lots = Math.floor(qty / c.ctVal / c.lotSz + 1e-9)
+  const contracts = Number((lots * c.lotSz).toFixed(dec(c.lotSz)))
+  const q = Number((contracts * c.ctVal).toFixed(dec(c.lotSz) + dec(c.ctVal)))
+  const raw = qty / c.ctVal
+  if (contracts < c.minSz) {
+    return { qty: 0, contracts, check: { key: 'contract', label: '合约最小下单量', ok: false, detail: `需要 ${raw.toPrecision(4)} 张，取整后 ${contracts} 张 < 最小 ${c.minSz} 张（1 张 = ${c.ctVal} ${symbol.split('/')[0]}），不交易` } }
+  }
+  return { qty: q, contracts, check: { key: 'contract', label: '合约取整', ok: true, detail: `${raw.toPrecision(6)} 张 → ${contracts} 张（每张 ${c.ctVal}，步长 ${c.lotSz}）= ${q} ${symbol.split('/')[0]}` } }
 }
 
 // ---------- 成交原语 ----------
@@ -163,14 +176,15 @@ function closePos(st, symbol, { px, ref, ts, reason, source, signalTs }, conf = 
 }
 
 function checkInvalidation(st, trade, conf) {
-  const s = (st.stratStats[trade.strategy] ??= { firstTs: trade.exit_ts, n: 0, recent: [] })
+  const s = (st.stratStats[trade.strategy] ??= { firstTs: trade.entry_ts, n: 0, recent: [] })
   s.n++
   s.recent = [...s.recent, trade.pnl].slice(-conf.paper.invalidationTrades)
   if (!st.invalidation || st.disabled[trade.strategy]) return
-  const r = risk.strategyInvalidation(s.recent.map((pnl) => ({ pnl })), conf)
+  // P1-3：累计 ≥20 笔 且 自该策略第一笔开仓起 ≥30 天，才评估最近 20 笔盈亏比
+  const r = risk.strategyInvalidation(s.recent.map((pnl) => ({ pnl })), conf, { total: s.n, days: (trade.exit_ts - s.firstTs) / DAY })
   if (r.invalid) {
-    st.disabled[trade.strategy] = `最近 ${r.n} 笔盈亏比 ${r.pf.toFixed(2)} < ${conf.paper.invalidationPf}，已自动下线`
-    note(st, trade.exit_ts, null, 'warn', 'risk', `${STRATEGIES[trade.strategy]?.label ?? trade.strategy} 触发失效条件，自动下线（最近 ${r.n} 笔盈亏比 ${r.pf.toFixed(2)}）`)
+    st.disabled[trade.strategy] = `运行 ${r.days.toFixed(0)} 天、累计 ${r.total} 笔，最近 ${r.n} 笔盈亏比 ${r.pf.toFixed(2)} < ${conf.paper.invalidationPf}，已自动下线`
+    note(st, trade.exit_ts, null, 'warn', 'risk', `${STRATEGIES[trade.strategy]?.label ?? trade.strategy} 触发失效条件，自动下线（运行 ${r.days.toFixed(0)} 天、累计 ${r.total} 笔，最近 ${r.n} 笔盈亏比 ${r.pf.toFixed(2)}）`)
   }
 }
 
@@ -301,7 +315,10 @@ function barOpen(st, ts, mkt, o) {
       const r = roundQty(s, qty, refPx, conf)
       qty = r.qty
       if (r.check) verdict.checks.push(r.check)
-      if (!(qty > 0)) verdict.approved = false
+      if (!(qty > 0)) {
+        verdict.approved = false
+        st.rejects.push({ ts, symbol: s, strategy: pd.strategy, reason: r.check?.detail ?? '数量为 0' }) // 回测和模拟盘都记录
+      }
     }
     if (rep) (rep[s] ??= { actions: [], notes: [] }).risk = verdict
     if (!verdict.approved) {

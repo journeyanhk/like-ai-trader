@@ -199,6 +199,7 @@ function createPaper({ store, market, conf = cfg, symbols = conf.symbols } = {})
     const trades = st.trades.splice(0)
     const fundings = st.fundings.splice(0)
     const logs = st.log.splice(0)
+    st.rejects.splice(0) // 原因已随 st.log 写入事件表
     const t = now()
     for (const f of fills) {
       const cid = orders.clientOrderId(f.source, f.signal_ts, f.symbol, f.intent)
@@ -636,6 +637,8 @@ function createPaper({ store, market, conf = cfg, symbols = conf.symbols } = {})
         maxLeverage: conf.risk.maxLeverage,
         bySymbolPct: Object.fromEntries(Object.entries(ex.bySymbol).map(([s, v]) => [s, eq > 0 ? (v / eq) * 100 : 0])),
         symbolLimitPct: conf.risk.maxSymbolExposurePct,
+        byGroupPct: Object.fromEntries(Object.entries(ex.byGroup).map(([g, v]) => [g, eq > 0 ? (v / eq) * 100 : 0])),
+        groupLimitPct: conf.risk.maxGroupExposurePct,
         riskPerTradePct: conf.risk.riskPerTradePct,
       },
       positions: Object.values(st.positions).map((p) => {

@@ -63,7 +63,7 @@ function runBacktest(data, opts) {
     riskAmt: t.risk_amt,
   }))
   const { fees, slippage, funding, fundingAssumed } = st.totals
-  return { trades, hourly, totals: { fees, slippage, funding, fundingAssumed }, locked: st.locked, dailyLossDays: st.blockedDays, startEquity: st.startEquity, state: st }
+  return { trades, hourly, totals: { fees, slippage, funding, fundingAssumed }, locked: st.locked, dailyLossDays: st.blockedDays, rejects: st.rejects, startEquity: st.startEquity, state: st }
 }
 
 // ===== 指标 =====
