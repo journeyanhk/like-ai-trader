@@ -116,3 +116,47 @@ export const STATE_STYLE: Record<PaperStatus['state'], { label: string; color: s
   stopped: { label: '已紧急停止', color: '#ef4444', bg: 'rgba(239,68,68,0.14)', hint: '你按下了紧急停止：所有持仓已平掉，不再开新仓，直到你点「恢复运行」' },
   locked: { label: '回撤锁定', color: '#ef4444', bg: 'rgba(239,68,68,0.14)', hint: '账户从最高点回撤达到 10%，已全部平仓并锁定，必须你手动解锁' },
 }
+
+export interface GroupStat {
+  key: string
+  label: string
+  trades: number
+  pnl: number
+  winRatePct: number | null
+  profitFactor: number | null
+  avgR: number | null
+  avgHoldHours: number | null
+}
+export interface PaperStats {
+  startedAt: number | null
+  runningDays: number
+  startingEquity: number
+  equity: number
+  totalReturnPct: number
+  maxDrawdownPct: number
+  overall: Omit<GroupStat, 'key' | 'label'>
+  costs: { fees: number; slippage: number; funding: number }
+  byStrategy: GroupStat[]
+  bySymbol: GroupStat[]
+  bySide: GroupStat[]
+  curve: { ts: number; equity: number }[]
+  drawdown: { ts: number; dd: number }[]
+}
+export interface OrderDetail extends PaperOrder {
+  history: { ts: number; from: string; to: string; note: string }[]
+}
+export const EVENT_TYPE_NAME: Record<string, string> = {
+  order: '订单',
+  trade: '平仓',
+  risk: '风控',
+  auto_pause: '自动暂停',
+  auto_resume: '自动恢复',
+  control: '人工操作',
+  system: '系统',
+  settings: '参数修改',
+  data_sync: '数据同步',
+  data_quality: '数据质量',
+  data_source: '数据源',
+  regime_change: '市场状态',
+  backtest: '回测',
+}

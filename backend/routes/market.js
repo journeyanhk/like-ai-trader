@@ -147,13 +147,32 @@ router.get('/data-status', async (_req, res) => {
   }
 })
 
+// 事件流水：?types=a,b&levels=warn,error&before=<ts>&limit=50
 router.get('/events', async (req, res) => {
   try {
-    const types = String(req.query.types || '').split(',').map((x) => x.trim()).filter(Boolean)
-    const { rows } = types.length
-      ? await dbQuery(`SELECT id, ts::float8 AS ts, level, type, message FROM events WHERE type = ANY($1) ORDER BY ts DESC LIMIT 50`, [types])
-      : await dbQuery(`SELECT id, ts::float8 AS ts, level, type, message FROM events ORDER BY ts DESC LIMIT 50`)
+    const list = (v) => String(v || '').split(',').map((x) => x.trim()).filter(Boolean)
+    const types = list(req.query.types)
+    const levels = list(req.query.levels)
+    const before = Number(req.query.before) || null
+    const limit = Math.min(200, Number(req.query.limit) || 50)
+    const { rows } = await dbQuery(
+      `SELECT id, ts::float8 AS ts, level, type, message FROM events
+       WHERE ($1::text[] IS NULL OR type = ANY($1)) AND ($2::text[] IS NULL OR level = ANY($2)) AND ($3::bigint IS NULL OR ts < $3)
+       ORDER BY ts DESC, id DESC LIMIT $4`,
+      [types.length ? types : null, levels.length ? levels : null, before, limit],
+    )
     res.json(rows.map((r) => ({ ...r, ts: Number(r.ts) })))
+  } catch (e) {
+    res.status(500).json({ error: e.message })
+  }
+})
+
+// 事件统计（驾驶舱告警角标）：最近 24 小时各级别数量
+router.get('/events/summary', async (_req, res) => {
+  try {
+    const { rows } = await dbQuery(`SELECT level, COUNT(*)::int AS c FROM events WHERE ts > $1 GROUP BY level`, [Date.now() - 86400_000])
+    const { rows: types } = await dbQuery(`SELECT type, COUNT(*)::int AS c FROM events GROUP BY type ORDER BY c DESC`)
+    res.json({ last24h: Object.fromEntries(rows.map((r) => [r.level, r.c])), types })
   } catch (e) {
     res.status(500).json({ error: e.message })
   }

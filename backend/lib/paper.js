@@ -94,6 +94,7 @@ function rowToPos(r) {
 
 async function load(force = false) {
   if (S.loaded && !force) return
+  await require('./settings').ensureLoaded()
   let { rows } = await dbQuery(`SELECT * FROM paper_account WHERE id='main'`)
   if (!rows.length) {
     const t = now()
@@ -297,7 +298,7 @@ async function lockForDrawdown(equity, dd) {
   S.acct.status_reason = `回撤 ${dd.toFixed(2)}% 达到 ${cfg.risk.maxDrawdownPct}% 上限，已全部平仓并锁定，需人工解锁`
   await saveAcct()
   await feed.logEvent('error', 'risk', `回撤风控触发：权益 ${fmt(equity)}，较峰值回撤 ${dd.toFixed(2)}%，全部平仓并锁定`)
-  await flattenAll('回撤 10% 风控锁定', 'ddlock')
+  await flattenAll(`回撤 ${cfg.risk.maxDrawdownPct}% 风控锁定`, 'ddlock')
 }
 
 /** 每次估值后都跑：更新峰值、日内基准、日亏停手、回撤锁定 */

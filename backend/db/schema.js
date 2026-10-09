@@ -166,3 +166,22 @@ exports.paper_cycles = pgTable('paper_cycles', {
   bar_ts: bigint('bar_ts', { mode: 'number' }),
   summary: jsonb('summary'),
 })
+
+// ===== 第 4 次交付：设置 =====
+// 风控参数覆盖值（只允许比设计文档更严格）
+exports.settings = pgTable('settings', {
+  key: text('key').primaryKey(), // 例如 risk.dailyLossLimitPct
+  value: jsonb('value'),
+  updated_at: bigint('updated_at', { mode: 'number' }),
+})
+
+// 参数修改记录（谁、何时、从多少改到多少、为什么）
+exports.settings_changes = pgTable('settings_changes', {
+  id: serial('id').primaryKey(),
+  ts: bigint('ts', { mode: 'number' }).notNull(),
+  key: text('key').notNull(),
+  old_value: jsonb('old_value'),
+  new_value: jsonb('new_value'),
+  reason: text('reason'),
+  source: text('source'), // web / system
+})

@@ -6,19 +6,22 @@ import { useState } from 'react'
 import MarketPage from '@/components/MarketPage'
 import BacktestPage from '@/components/BacktestPage'
 import PaperPage from '@/components/PaperPage'
+import CockpitPage from '@/components/CockpitPage'
+import SettingsPage from '@/components/SettingsPage'
 
 const TABS = [
-  { key: 'market', label: '行情看板', ready: true },
-  { key: 'backtest', label: '回测实验室', ready: true },
-  { key: 'paper', label: '模拟交易', ready: true },
-  { key: 'cockpit', label: '交易驾驶舱', ready: false },
-  { key: 'review', label: 'AI 复盘', ready: false },
-  { key: 'accept', label: '验收清单', ready: false },
+  { key: 'cockpit', label: '交易驾驶舱', ready: true, step: 4 },
+  { key: 'paper', label: '模拟交易 · 风控', ready: true, step: 3 },
+  { key: 'market', label: '行情看板', ready: true, step: 1 },
+  { key: 'backtest', label: '回测实验室', ready: true, step: 2 },
+  { key: 'settings', label: '设置', ready: true, step: 4 },
+  { key: 'review', label: 'AI 复盘', ready: false, step: 5 },
+  { key: 'accept', label: '验收清单', ready: false, step: 6 },
 ]
 
 export default function App() {
   const qc = useQueryClient()
-  const [tab, setTab] = useState('market')
+  const [tab, setTab] = useState('cockpit')
   const overview = useQuery<Overview>({
     queryKey: ['overview'],
     queryFn: async () => {
@@ -70,7 +73,7 @@ export default function App() {
           </div>
         </div>
         <nav className="max-w-[1400px] mx-auto px-4 flex gap-1 overflow-x-auto">
-          {TABS.map((t, i) => (
+          {TABS.map((t) => (
             <button
               key={t.key}
               disabled={!t.ready}
@@ -82,11 +85,11 @@ export default function App() {
                     ? 'border-transparent text-fg-subtle hover:text-fg-base'
                     : 'border-transparent text-fg-disabled cursor-not-allowed'
               }`}
-              title={t.ready ? '' : `第 ${i + 1} 次交付上线`}
+              title={t.ready ? '' : `第 ${t.step} 次交付上线`}
             >
               {!t.ready && <Lock size={11} />}
               {t.label}
-              {!t.ready && <span className="text-[10px]">· 第 {i + 1} 步</span>}
+              {!t.ready && <span className="text-[10px]">· 第 {t.step} 步</span>}
             </button>
           ))}
         </nav>
@@ -96,6 +99,8 @@ export default function App() {
         {tab === 'market' && <MarketPage overview={overview} status={status} events={events} />}
         {tab === 'backtest' && <BacktestPage />}
         {tab === 'paper' && <PaperPage />}
+        {tab === 'cockpit' && <CockpitPage goPaper={() => setTab('paper')} />}
+        {tab === 'settings' && <SettingsPage />}
 
         <footer className="text-[11px] text-fg-muted pt-2 pb-6">
           市场状态每小时自动重新计算（K 线收盘后 2 分钟）。所有数据来自免费公开接口，回测为本地计算，不消耗 Surf 点数。交易全部为模拟，不涉及真钱。

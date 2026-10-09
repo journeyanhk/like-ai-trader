@@ -15,7 +15,7 @@
 | 1 | 行情 & 市场状态看板（含 2 年历史 K 线仓库） | ✅ 已完成 |
 | 2 | 回测实验室（成本模型、滚动验证、参数敏感性） | ✅ 已完成 |
 | 3 | 风控大脑 + 模拟自动交易 + 紧急停止 | ✅ 已完成 |
-| 4 | 交易驾驶舱（净值、持仓、订单、告警、设置） | ⏳ |
+| 4 | 交易驾驶舱（净值、持仓、订单、告警、设置） | ✅ 已完成 |
 | 5 | AI 研究员 & 每日复盘 | ⏳ |
 | 6 | 验收清单页 | ⏳ |
 
@@ -36,7 +36,8 @@ backend/
   server.js            入口（Surf SDK createServer：自动挂载路由、定时任务、数据库同步）
   cron.json            定时任务：每小时第 2 分钟（行情 → 市场状态 → 模拟交易循环）；每分钟风控巡检
   db/schema.js         数据表：candles, regime_snapshots, events, sync_state, funding_rates, backtest_runs,
-                       paper_account, paper_positions, paper_orders, paper_trades, paper_equity, paper_cycles
+                       paper_account, paper_positions, paper_orders, paper_trades, paper_equity, paper_cycles,
+                       settings, settings_changes
   lib/config.js        全部参数（标的、周期、市场状态阈值、风控、成本）
   lib/indicators.js    确定性指标：EMA / ATR / ADX / RSI / 布林带
   lib/regime.js        市场状态判定（趋势 / 震荡 / 高波动 / 低流动性 / 不明确）
@@ -48,16 +49,18 @@ backend/
   lib/lab.js           回测实验室：基准对比、滚动验证（训练180天/测试60天/步长30天）、参数敏感性(±20%)、验收检查
   lib/risk.js          风控引擎（纯函数）：仓位计算、敞口上限、日亏、回撤、策略失效、数据检查、开仓审核
   lib/orders.js        订单状态机 + 幂等 clientOrderId
+  lib/settings.js      可调风控参数：只能比文档更严格，必须填写原因，每次修改留痕
   lib/paper.js         模拟交易引擎：每小时交易循环、每分钟巡检、自动暂停、紧急停止、对账、心跳
   jobs/monitor.js      每分钟风控巡检入口
   tests/               单元测试（cd backend && bun run test）
   scripts/paper-drill.js  模拟盘演练脚本（会写入模拟账户，仅开发调试用）
   routes/market.js     /api/market/*  看板接口
   routes/backtest.js   /api/backtest/*  回测接口
-  routes/paper.js      /api/paper/*  模拟交易：状态、订单、成交、决策记录、紧急停止 / 恢复 / 解锁
+  routes/paper.js      /api/paper/*  模拟交易：状态、订单（含状态历史）、成交、决策记录、统计、紧急停止 / 恢复 / 解锁
+  routes/settings.js   /api/settings/*  查看与调整风控参数、修改记录
 frontend/
   src/App.tsx          主界面
-  src/components/      图表与面板
+  src/components/      图表与面板（CockpitPage 驾驶舱、SettingsPage 设置、PaperPage 模拟交易…）
 docs/                  设计文档与计划
 ```
 
@@ -109,6 +112,11 @@ docs/                  设计文档与计划
 其他：每个订单带唯一 clientOrderId（同一信号重复执行也只下一次单）；启动即对账；心跳每 5 分钟，连续缺 3 次在下次启动时告警；整点任务错过会在 5 分钟后自动补跑（补跑时按实时价成交）。
 
 数据库访问说明：数据库由 Surf SDK 托管。为了尽量少访问，账户状态常驻内存，只在变化时写库；每分钟巡检平时只访问 OKX 免费接口，心跳与对账每 5 分钟写一次。
+
+## 交易驾驶舱与设置
+
+- 驾驶舱：当前状态、权益、总收益、最大回撤、今日盈亏、已运行天数（目标 30 天）；净值曲线 + 回撤图；持仓与浮动盈亏；按策略 / 标的 / 方向的绩效统计；全部成交；订单（可按状态筛选，展开看每一步状态变化）；告警中心（按级别、类型筛选，可翻页）。
+- 设置：6 个风控参数可调，规则是 **只能比设计文档更严格，不能放宽**（文档值即上限）；每次修改必须写原因，自动记入修改记录并产生一条告警事件；可一键恢复文档默认值。其他参数（标的、成本、市场状态阈值、暂停条件、策略参数）只读展示。
 
 ## 自行部署
 

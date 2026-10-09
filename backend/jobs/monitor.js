@@ -9,6 +9,7 @@ exports.handler = async () => {
   // 整点那次如果因为重启等原因错过了，这里补跑一次（同一根 K 线不会重复执行）
   if (paper.needsCycle() && !catchingUp) {
     catchingUp = true
+    console.log('[monitor] 整点交易循环未执行，开始补跑')
     try {
       const r = await jobs.runHourly()
       await paper.runCycle(r.regimes)

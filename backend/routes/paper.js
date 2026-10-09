@@ -56,8 +56,8 @@ router.get(
     const { rows } = await dbQuery(
       `SELECT id, client_order_id, symbol, side, intent, qty, ref_px, fill_px, fee, slippage, status, reason, strategy,
               signal_ts::float8 AS signal_ts, history, created_at::float8 AS created_at, updated_at::float8 AS updated_at
-       FROM paper_orders ORDER BY id DESC LIMIT $1`,
-      [limit],
+       FROM paper_orders WHERE ($2::text IS NULL OR status=$2) ORDER BY id DESC LIMIT $1`,
+      [limit, req.query.status ? String(req.query.status) : null],
     )
     return rows.map((r) => ({ ...r, statusLabel: orders.STATUS_LABEL[r.status] ?? r.status, strategyLabel: STRATEGIES[r.strategy]?.label ?? r.strategy }))
   }),
@@ -92,6 +92,82 @@ router.get(
       `SELECT ts::float8 AS ts, equity, cash, unrealized, exposure, drawdown_pct, positions FROM paper_equity ORDER BY ts DESC LIMIT 5000`,
     )
     return rows.reverse()
+  }),
+)
+
+// 驾驶舱统计：收益、回撤、胜率、盈亏比、成本，按策略 / 币种拆分
+const H1 = 3600_000
+router.get(
+  '/stats',
+  wrap(async () => {
+    await paper.load()
+    const snap = paper.snapshot()
+    const tr = (
+      await dbQuery(`SELECT symbol, strategy, side, entry_ts::float8 AS entry_ts, exit_ts::float8 AS exit_ts, fees, slippage, funding, pnl, risk_amt FROM paper_trades ORDER BY exit_ts`)
+    ).rows.map((r) => ({ ...r, entry_ts: Number(r.entry_ts), exit_ts: Number(r.exit_ts), fees: Number(r.fees || 0), slippage: Number(r.slippage || 0), funding: Number(r.funding || 0), pnl: Number(r.pnl), risk_amt: Number(r.risk_amt || 0) }))
+    const eqRows = (await dbQuery(`SELECT ts::float8 AS ts, equity FROM paper_equity ORDER BY ts`)).rows.map((r) => ({ ts: Number(r.ts), equity: Number(r.equity) }))
+    const start = snap.startingEquity
+    const curve = [...eqRows]
+    const t = Date.now()
+    if (!curve.length || curve[curve.length - 1].ts < t - 60_000) curve.push({ ts: t, equity: snap.equity })
+    let peak = start
+    let mdd = 0
+    const dd = curve.map((p) => {
+      peak = Math.max(peak, p.equity)
+      const v = ((peak - p.equity) / peak) * 100
+      mdd = Math.max(mdd, v)
+      return { ts: p.ts, dd: -v }
+    })
+    const group = (rows) => {
+      const wins = rows.filter((x) => x.pnl > 0)
+      const gw = wins.reduce((a, b) => a + b.pnl, 0)
+      const gl = -rows.filter((x) => x.pnl <= 0).reduce((a, b) => a + b.pnl, 0)
+      return {
+        trades: rows.length,
+        pnl: rows.reduce((a, b) => a + b.pnl, 0),
+        winRatePct: rows.length ? (wins.length / rows.length) * 100 : null,
+        profitFactor: gl ? gw / gl : gw ? null : null,
+        avgR: rows.length ? rows.reduce((a, b) => a + (b.risk_amt ? b.pnl / b.risk_amt : 0), 0) / rows.length : null,
+        avgHoldHours: rows.length ? rows.reduce((a, b) => a + (b.exit_ts - b.entry_ts), 0) / rows.length / H1 : null,
+      }
+    }
+    const by = (key, labels = {}) => {
+      const m = {}
+      for (const r of tr) (m[r[key]] ||= []).push(r)
+      return Object.entries(m).map(([k, rows]) => ({ key: k, label: labels[k] ?? k, ...group(rows) }))
+    }
+    const running = snap.startedAt ? (t - snap.startedAt) / 86400_000 : 0
+    return {
+      startedAt: snap.startedAt,
+      runningDays: running,
+      startingEquity: start,
+      equity: snap.equity,
+      totalReturnPct: (snap.equity / start - 1) * 100,
+      maxDrawdownPct: mdd,
+      overall: group(tr),
+      costs: {
+        fees: tr.reduce((a, b) => a + b.fees, 0) + snap.positions.reduce((a, p) => a + p.fees, 0),
+        slippage: tr.reduce((a, b) => a + b.slippage, 0),
+        funding: tr.reduce((a, b) => a + b.funding, 0) + snap.positions.reduce((a, p) => a + p.funding, 0),
+      },
+      byStrategy: by('strategy', Object.fromEntries(Object.values(STRATEGIES).map((x) => [x.name, x.label]))),
+      bySymbol: by('symbol'),
+      bySide: by('side', { long: '做多', short: '做空' }),
+      curve,
+      drawdown: dd,
+    }
+  }),
+)
+
+router.get(
+  '/orders/:id',
+  wrap(async (req, res) => {
+    const { rows } = await dbQuery(`SELECT * FROM paper_orders WHERE id=$1`, [Number(req.params.id)])
+    if (!rows.length) {
+      res.status(404)
+      return { error: '订单不存在' }
+    }
+    return { ...rows[0], statusLabel: orders.STATUS_LABEL[rows[0].status] }
   }),
 )
 

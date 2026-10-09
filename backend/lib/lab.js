@@ -41,6 +41,7 @@ function marketLabel(data, from, to) {
 }
 
 async function runLab(req) {
+  await require('./settings').ensureLoaded()
   const symbols = (req.symbols?.length ? req.symbols : cfg.symbols).filter((s) => cfg.symbols.includes(s))
   const strategies = (req.strategies?.length ? req.strategies : Object.keys(STRATEGIES)).filter((s) => STRATEGIES[s])
   const regimeFilter = req.regimeFilter !== false

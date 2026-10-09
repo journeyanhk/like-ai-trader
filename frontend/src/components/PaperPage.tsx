@@ -312,8 +312,8 @@ function RiskGauges({ s }: { s: PaperStatus }) {
     <div className={card}>
       <Title hint="红线写死在程序里，策略无法绕过。条越满越接近红线。">风控红线</Title>
       <div className="space-y-3">
-        <Bar label="今日亏损（到 2% 当天停手）" value={Math.max(0, -g.dailyChangePct)} limit={g.dailyLimitPct} fmt={p1} hint="今天（UTC）权益相对今天开始时的跌幅" />
-        <Bar label="从最高点回撤（到 10% 全平锁定）" value={g.drawdownPct} limit={g.drawdownLimitPct} fmt={p1} hint={`最高权益 ${usd(s.peakEquity)}`} />
+        <Bar label={`今日亏损（到 ${g.dailyLimitPct}% 当天停手）`} value={Math.max(0, -g.dailyChangePct)} limit={g.dailyLimitPct} fmt={p1} hint="今天（UTC）权益相对今天开始时的跌幅" />
+        <Bar label={`从最高点回撤（到 ${g.drawdownLimitPct}% 全平锁定）`} value={g.drawdownPct} limit={g.drawdownLimitPct} fmt={p1} hint={`最高权益 ${usd(s.peakEquity)}`} />
         <Bar label="总仓位 / 权益" value={g.grossPct} limit={g.grossLimitPct} fmt={(v) => `${v.toFixed(0)}%`} hint="BTC 和 ETH 走势高度相关，合并计算" />
         <Bar label="杠杆" value={g.leverage} limit={g.maxLeverage} fmt={(v) => `${v.toFixed(2)}x`} hint="总仓位 ÷ 权益" />
       </div>
@@ -368,7 +368,7 @@ function PauseConditions({ s }: { s: PaperStatus }) {
   )
 }
 
-function Positions({ s }: { s: PaperStatus }) {
+export function Positions({ s }: { s: PaperStatus }) {
   return (
     <div className={card}>
       <Title hint="止损由系统每分钟看守；碰到止损立即按市价平仓。">当前持仓</Title>
