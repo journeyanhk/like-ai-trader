@@ -95,6 +95,8 @@ async function syncOne(symbol, interval) {
   return { symbol, interval, added, ...q, status }
 }
 
+const DAY = 86400_000
+const archiveTried = new Set()
 async function syncFunding(symbol) {
   const { rows } = await dbQuery('SELECT MAX(ts)::float8 AS last FROM funding_rates WHERE symbol=$1', [symbol])
   const since = rows[0]?.last ? rows[0].last + 1 : 0
@@ -137,6 +139,16 @@ async function syncAll() {
     for (const s of cfg.symbols) {
       try {
         await syncFunding(s)
+        // P1-4：REST 只有约 3 个月；历史不足 historyDays 时从 OKX 官方月度文件回填（每个进程每个币最多尝试一次）
+        if (!archiveTried.has(s)) {
+          archiveTried.add(s)
+          const { rows } = await dbQuery('SELECT MIN(ts)::float8 AS first FROM funding_rates WHERE symbol=$1', [s])
+          const need = Date.now() - cfg.historyDays * DAY
+          if (!rows[0]?.first || rows[0].first > need + 2 * DAY) {
+            const r = await require('./fundingArchive').backfill(s, need)
+            await logEvent('info', 'data_sync', `${s} 资金费率历史回填：新增 ${r.inserted} 条（OKX 官方月度文件 ${r.files} 个）`, r)
+          }
+        }
       } catch (e) {
         await logEvent('warn', 'data_sync', `${s} 资金费率同步失败：${e.message}`)
       }
