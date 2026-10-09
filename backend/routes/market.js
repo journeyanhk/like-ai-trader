@@ -147,9 +147,12 @@ router.get('/data-status', async (_req, res) => {
   }
 })
 
-router.get('/events', async (_req, res) => {
+router.get('/events', async (req, res) => {
   try {
-    const { rows } = await dbQuery(`SELECT id, ts::float8 AS ts, level, type, message FROM events ORDER BY ts DESC LIMIT 50`)
+    const types = String(req.query.types || '').split(',').map((x) => x.trim()).filter(Boolean)
+    const { rows } = types.length
+      ? await dbQuery(`SELECT id, ts::float8 AS ts, level, type, message FROM events WHERE type = ANY($1) ORDER BY ts DESC LIMIT 50`, [types])
+      : await dbQuery(`SELECT id, ts::float8 AS ts, level, type, message FROM events ORDER BY ts DESC LIMIT 50`)
     res.json(rows.map((r) => ({ ...r, ts: Number(r.ts) })))
   } catch (e) {
     res.status(500).json({ error: e.message })

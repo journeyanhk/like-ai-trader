@@ -5,11 +5,12 @@ import { type Overview, type DataStatusItem, type EventItem, fmtTime } from '@/l
 import { useState } from 'react'
 import MarketPage from '@/components/MarketPage'
 import BacktestPage from '@/components/BacktestPage'
+import PaperPage from '@/components/PaperPage'
 
 const TABS = [
   { key: 'market', label: '行情看板', ready: true },
   { key: 'backtest', label: '回测实验室', ready: true },
-  { key: 'paper', label: '模拟交易', ready: false },
+  { key: 'paper', label: '模拟交易', ready: true },
   { key: 'cockpit', label: '交易驾驶舱', ready: false },
   { key: 'review', label: 'AI 复盘', ready: false },
   { key: 'accept', label: '验收清单', ready: false },
@@ -94,9 +95,10 @@ export default function App() {
       <main className="max-w-[1400px] mx-auto px-4 py-5 space-y-4">
         {tab === 'market' && <MarketPage overview={overview} status={status} events={events} />}
         {tab === 'backtest' && <BacktestPage />}
+        {tab === 'paper' && <PaperPage />}
 
         <footer className="text-[11px] text-fg-muted pt-2 pb-6">
-          市场状态每小时自动重新计算（K 线收盘后 2 分钟）。所有数据来自免费公开接口，回测为本地计算，不消耗 Surf 点数。目前不会下单。
+          市场状态每小时自动重新计算（K 线收盘后 2 分钟）。所有数据来自免费公开接口，回测为本地计算，不消耗 Surf 点数。交易全部为模拟，不涉及真钱。
         </footer>
       </main>
     </div>

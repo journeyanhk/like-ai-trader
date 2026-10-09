@@ -66,4 +66,17 @@ module.exports = {
   },
 
   paperStartingEquity: 10000,
+
+  // 模拟盘（第 3 次交付）
+  paper: {
+    strategies: ['trend_following', 'mean_reversion'], // 默认启用的策略（参数用策略默认值）
+    barsForSignals: 600, // 计算信号用的 1h K 线数量
+    heartbeatEveryMs: 5 * 60_000, // 心跳 5 分钟写一次
+    heartbeatMissing: 3, // 连续 3 次缺失视为宕机
+    orderUnknownSeconds: 30, // 订单超过 30 秒状态未知 → 暂停
+    maxApiErrors: 5, // 连续 5 次接口错误 → 暂停
+    autoResumeHealthyChecks: 5, // 数据类暂停：连续 5 次（约 5 分钟）检查正常后自动恢复
+    invalidationTrades: 20, // 策略失效：最近 20 笔盈亏比 < 1.0 自动下线
+    invalidationPf: 1.0,
+  },
 }

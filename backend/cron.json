@@ -1,10 +1,18 @@
 [
   {
     "id": "hourly-market",
-    "name": "每小时：同步行情并判定市场状态",
+    "name": "每小时：同步行情、判定市场状态、模拟交易循环",
     "schedule": "2 * * * *",
     "handler": "jobs/hourly.js",
     "enabled": true,
     "timeout": 280
+  },
+  {
+    "id": "risk-monitor",
+    "name": "每分钟：风控巡检（止损 / 回撤 / 日亏 / 自动暂停 / 心跳）",
+    "schedule": "* * * * *",
+    "handler": "jobs/monitor.js",
+    "enabled": true,
+    "timeout": 55
   }
 ]

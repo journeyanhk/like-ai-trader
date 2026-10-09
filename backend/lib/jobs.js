@@ -39,7 +39,7 @@ async function snapshotRegimes(spreads = {}) {
 async function runHourly() {
   const sync = await feed.syncAll()
   const regimes = await snapshotRegimes()
-  return { sync, regimes: regimes.map((r) => ({ symbol: r.symbol, regime: r.regime })) }
+  return { sync, regimes: regimes.map((r) => ({ symbol: r.symbol, regime: r.regime, label: r.label })) }
 }
 
 module.exports = { runHourly, regimeFor, snapshotRegimes }

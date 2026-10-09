@@ -65,3 +65,104 @@ exports.backtest_runs = pgTable('backtest_runs', {
   error: text('error'),
   duration_ms: integer('duration_ms'),
 })
+
+// ===== 第 3 次交付：模拟交易 =====
+const { boolean } = require('drizzle-orm/pg-core')
+
+// 模拟账户（单行 id='main'）：资金、峰值、日内基准、运行状态
+exports.paper_account = pgTable('paper_account', {
+  id: text('id').primaryKey(),
+  status: text('status').notNull(), // running / stopped（紧急停止）/ locked（回撤锁定）
+  status_reason: text('status_reason'),
+  pause_keys: jsonb('pause_keys'), // 当前生效的自动暂停条件
+  cash: doublePrecision('cash').notNull(),
+  peak_equity: doublePrecision('peak_equity').notNull(),
+  day_key: integer('day_key'),
+  day_start_equity: doublePrecision('day_start_equity'),
+  day_blocked: boolean('day_blocked'),
+  enabled_strategies: jsonb('enabled_strategies'),
+  disabled_strategies: jsonb('disabled_strategies'), // 因失效条件自动下线 { name: reason }
+  last_bar_ts: bigint('last_bar_ts', { mode: 'number' }), // 已处理到哪根 K 线（防重复执行）
+  last_heartbeat: bigint('last_heartbeat', { mode: 'number' }),
+  last_cycle_at: bigint('last_cycle_at', { mode: 'number' }),
+  started_at: bigint('started_at', { mode: 'number' }),
+  updated_at: bigint('updated_at', { mode: 'number' }),
+})
+
+// 当前持仓
+exports.paper_positions = pgTable('paper_positions', {
+  symbol: text('symbol').primaryKey(),
+  side: integer('side').notNull(), // 1 多 / -1 空
+  qty: doublePrecision('qty').notNull(),
+  entry_px: doublePrecision('entry_px').notNull(),
+  entry_ts: bigint('entry_ts', { mode: 'number' }).notNull(),
+  stop: doublePrecision('stop').notNull(),
+  strategy: text('strategy').notNull(),
+  params: jsonb('params'),
+  regime: text('regime'),
+  fees: doublePrecision('fees').notNull(),
+  slippage: doublePrecision('slippage').notNull(),
+  funding: doublePrecision('funding').notNull(),
+  risk_amt: doublePrecision('risk_amt').notNull(),
+  last_funding_ts: bigint('last_funding_ts', { mode: 'number' }),
+})
+
+// 订单（状态机：PENDING → SUBMITTED → FILLED / CANCELED / REJECTED / UNKNOWN）
+exports.paper_orders = pgTable('paper_orders', {
+  id: serial('id').primaryKey(),
+  client_order_id: text('client_order_id').notNull().unique(), // 幂等键：重复提交不会下两次
+  symbol: text('symbol').notNull(),
+  side: integer('side').notNull(), // 1 买 / -1 卖
+  intent: text('intent').notNull(), // open / close
+  qty: doublePrecision('qty').notNull(),
+  ref_px: doublePrecision('ref_px'),
+  fill_px: doublePrecision('fill_px'),
+  fee: doublePrecision('fee'),
+  slippage: doublePrecision('slippage'),
+  status: text('status').notNull(),
+  reason: text('reason'),
+  strategy: text('strategy'),
+  signal_ts: bigint('signal_ts', { mode: 'number' }),
+  history: jsonb('history'), // 状态变化记录
+  created_at: bigint('created_at', { mode: 'number' }).notNull(),
+  updated_at: bigint('updated_at', { mode: 'number' }),
+})
+
+// 已平仓交易
+exports.paper_trades = pgTable('paper_trades', {
+  id: serial('id').primaryKey(),
+  symbol: text('symbol').notNull(),
+  strategy: text('strategy').notNull(),
+  side: text('side').notNull(),
+  entry_ts: bigint('entry_ts', { mode: 'number' }).notNull(),
+  entry_px: doublePrecision('entry_px').notNull(),
+  exit_ts: bigint('exit_ts', { mode: 'number' }).notNull(),
+  exit_px: doublePrecision('exit_px').notNull(),
+  qty: doublePrecision('qty').notNull(),
+  regime: text('regime'),
+  reason: text('reason'),
+  fees: doublePrecision('fees'),
+  slippage: doublePrecision('slippage'),
+  funding: doublePrecision('funding'),
+  pnl: doublePrecision('pnl').notNull(),
+  risk_amt: doublePrecision('risk_amt'),
+})
+
+// 每小时净值快照
+exports.paper_equity = pgTable('paper_equity', {
+  ts: bigint('ts', { mode: 'number' }).primaryKey(),
+  equity: doublePrecision('equity').notNull(),
+  cash: doublePrecision('cash').notNull(),
+  unrealized: doublePrecision('unrealized'),
+  exposure: doublePrecision('exposure'),
+  drawdown_pct: doublePrecision('drawdown_pct'),
+  positions: integer('positions'),
+})
+
+// 每小时决策记录：系统看到了什么、风控怎么判、做了什么
+exports.paper_cycles = pgTable('paper_cycles', {
+  id: serial('id').primaryKey(),
+  ts: bigint('ts', { mode: 'number' }).notNull(),
+  bar_ts: bigint('bar_ts', { mode: 'number' }),
+  summary: jsonb('summary'),
+})

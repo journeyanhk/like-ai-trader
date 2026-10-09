@@ -129,4 +129,33 @@ async function fundingHistory(symbol, sinceMs) {
   return out.sort((a, b) => a.ts - b.ts)
 }
 
-module.exports = { candlesSince, snapshot, fearGreed, fundingHistory }
+// 轻量报价（模拟盘每分钟风控巡检用）：合约最新价 + 买一卖一 + 多交易所指数价
+async function quote(symbol) {
+  const [tk, idx] = await Promise.all([
+    get('market/ticker', { instId: instId(symbol) }, 2),
+    get('market/index-tickers', { instId: indexId(symbol) }, 2),
+  ])
+  const t = tk?.[0]
+  const i = idx?.[0]
+  const last = num(t?.last)
+  if (!last) throw new Error(`${symbol} 报价为空`)
+  return {
+    symbol,
+    last,
+    bid: num(t?.bidPx),
+    ask: num(t?.askPx),
+    ts: num(t?.ts),
+    index: num(i?.idxPx),
+    indexTs: num(i?.ts),
+  }
+}
+
+// 当前正在走的 1h K 线（取它的开盘价作为"下一根 K 线开盘价"成交，与回测规则一致）
+async function currentBar(symbol) {
+  const rows = await get('market/candles', { instId: instId(symbol), bar: '1H', limit: '1' }, 3)
+  const c = rows?.[0]
+  if (!c) throw new Error(`${symbol} 当前 K 线为空`)
+  return { ts: Number(c[0]), open: +c[1], high: +c[2], low: +c[3], close: +c[4], confirmed: c[8] === '1' }
+}
+
+module.exports = { candlesSince, snapshot, fearGreed, fundingHistory, quote, currentBar }
