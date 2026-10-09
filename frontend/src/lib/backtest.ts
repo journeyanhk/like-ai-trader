@@ -69,6 +69,7 @@ export interface LabResult {
     coverage: { up: boolean; down: boolean; range: boolean }
     totals: Totals
     folds: Fold[]
+    opsLocks?: { count: number; events: { ts: number; equity: number; ddPct: number }[]; rule: string }
   }
   sensitivity: { baseSharpe: number; stable: boolean; rows: SensRow[] }
   checks: Check[]

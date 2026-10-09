@@ -48,10 +48,14 @@ async function runLab(req) {
   const symbols = (req.symbols?.length ? req.symbols : cfg.symbols).filter((s) => cfg.symbols.includes(s))
   const strategies = (req.strategies?.length ? req.strategies : Object.keys(STRATEGIES)).filter((s) => STRATEGIES[s])
   const regimeFilter = req.regimeFilter !== false
+  // 研究口径（第二轮审查后）：策略判断一律用 ddLock=false 的运行。
+  // 开了回撤锁定的运行是「运营口径」：回测里锁定后永不解锁，这是未建模的人工事件，不能用来判断策略好坏。
   const ddLock = !!req.ddLock
+  const purpose = ddLock ? 'ops' : 'strategy'
   // P2-3：策略比较阶段只用留出集之前的数据（4h K 线要在边界前收盘）
   const holdoutFrom = cfg.backtest.holdoutFrom
   const data = await loadData(symbols, { toTs: holdoutFrom })
+  req.onData?.(data) // 研究脚本用：拿到同一份数据（只读），给假设过滤器查资金费 / BTC 状态
   for (const s of symbols) {
     const last1h = data[s].bars[data[s].bars.length - 1]?.ts
     const last4h = data[s].bars4h?.[data[s].bars4h.length - 1]?.ts
@@ -66,6 +70,24 @@ async function runLab(req) {
   const defaults = Object.fromEntries(strategies.map((n) => [n, { ...STRATEGIES[n].defaults }]))
   const run = (from, to, paramsAt, strats = strategies) =>
     runBacktest(data, { strategies: strats, paramsAt, from, to, regimeFilter, ddLock, cache })
+
+  // 运营信息：如果开着 10% 回撤锁定，在样本外会在哪些日期触发、共几次。
+  // 假设每次锁定后人工检查 24 小时再解锁（峰值从解锁时的净值重新算），然后继续跑，直到区间结束。
+  function opsLockEvents(from, to, paramsAt) {
+    const events = []
+    let t = from
+    let eq = cfg.paperStartingEquity
+    for (let guard = 0; guard < 50 && t < to; guard++) {
+      const r = runBacktest(data, { strategies, paramsAt, from: t, to, regimeFilter, ddLock: true, cache, startEquity: eq })
+      if (!r.locked) break
+      const peak = r.state.peak
+      events.push({ ts: r.locked.ts, equity: round(r.locked.equity), ddPct: round((1 - r.locked.equity / peak) * 100) })
+      const resume = Math.ceil((r.locked.ts + DAY) / 3600_000) * 3600_000
+      eq = [...r.hourly].reverse().find((h) => h.ts < resume)?.equity ?? r.locked.equity
+      t = resume
+    }
+    return { count: events.length, events, rule: '回撤 ≥ 10% 锁定；假设 24 小时后人工解锁，峰值从解锁时重新计算' }
+  }
 
   // ===== 1. 全周期回测（默认参数）=====
   const main = run(start, end, (n) => defaults[n])
@@ -138,7 +160,10 @@ async function runLab(req) {
   if (folds.length) {
     const segs = folds.map((f, k) => ({ from: f.trainEnd, to: k === folds.length - 1 ? f.testEnd : f.trainEnd + stepDays * DAY, params: f.params }))
     const paramsAt = (n, ts) => (segs.find((s) => ts >= s.from && ts < s.to) ?? segs[segs.length - 1]).params[n]
+    // 研究用过滤器（scripts/research）：只统计拼接样本外这一次运行里被过滤的入场
+    for (const n of strategies) STRATEGIES[n].research?.reset()
     const oos = run(segs[0].from, segs[segs.length - 1].to, paramsAt)
+    const filterStats = Object.fromEntries(strategies.filter((n) => STRATEGIES[n].research).map((n) => [n, STRATEGIES[n].research.stats()]))
     const m = metrics(oos)
     const isAvg = folds.reduce((a, f) => a + f.inSample.sharpe, 0) / folds.length
     const markets = new Set(folds.map((f) => f.market.label))
@@ -150,6 +175,8 @@ async function runLab(req) {
       avgInSampleSharpe: round(isAvg),
       coverage: { up: markets.has('上涨'), down: markets.has('下跌'), range: markets.has('震荡') },
       totals: Object.fromEntries(Object.entries(oos.totals).map(([k, v]) => [k, round(v)])),
+      filterStats,
+      opsLocks: opsLockEvents(segs[0].from, segs[segs.length - 1].to, paramsAt),
     }
   }
 
@@ -189,6 +216,8 @@ async function runLab(req) {
     strategies,
     regimeFilter,
     ddLock,
+    purpose,
+    research: req.research ?? null,
     from: start,
     to: end,
     holdoutFrom,
@@ -198,7 +227,8 @@ async function runLab(req) {
     maxDrawdownPct: round(mainM.maxDrawdownPct),
     trades: mainM.trades,
     oosSharpe: wf ? round(wf.metrics.sharpe) : null,
-    passed: checks.length ? checks.every((c) => c.pass) : false,
+    opsLockCount: wf ? wf.opsLocks.count : null,
+    passed: purpose === 'strategy' && checks.length ? checks.every((c) => c.pass) : false,
     passCount: checks.filter((c) => c.pass).length,
     checkCount: checks.length,
   }

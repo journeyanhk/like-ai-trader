@@ -11,21 +11,29 @@ const H1 = 3600_000
 const r2 = (x, d = 2) => (x == null || !Number.isFinite(x) ? null : Math.round(x * 10 ** d) / 10 ** d)
 
 // ---------- 1. 回测（滚动样本外）----------
+const isOpsRun = (r) => !!r.summary?.ddLock || r.summary?.purpose === 'ops'
 async function backtestPart(runId) {
   const runs = (
     await dbQuery(`SELECT id, created_at, summary FROM backtest_runs WHERE status='done' ORDER BY id DESC LIMIT 30`)
   ).rows.map((r) => ({ id: r.id, createdAt: r.created_at ? new Date(r.created_at).getTime() : null, summary: r.summary }))
-  const chosenId = runId && runs.some((r) => r.id === runId) ? runId : runs[0]?.id
+  // 运营口径 = 开了回撤锁定（锁定后永不解锁，不作策略判断）；研究假设运行也不作为默认依据
+  const isOps = (r) => !!r.summary?.ddLock || r.summary?.purpose === 'ops'
+  const isResearch = (r) => !!r.summary?.research
+  const chosenId = runId && runs.some((r) => r.id === runId) ? runId : (runs.find((r) => !isOps(r) && !isResearch(r)) ?? runs[0])?.id
   if (!chosenId) return { runs, run: null, checks: null }
   const { rows } = await dbQuery(`SELECT id, summary, result->'checks' AS checks FROM backtest_runs WHERE id=$1`, [chosenId])
   const run = rows[0]
-  const checks = Object.fromEntries((run.checks ?? []).map((c) => [c.key, c]))
   const s = run.summary ?? {}
+  const ops = isOps({ summary: s })
+  // 运营口径的运行不参与策略门判断：5 项显示为「待定」
+  const checks = ops ? {} : Object.fromEntries((run.checks ?? []).map((c) => [c.key, c]))
   const warnings = []
+  if (ops) warnings.push('这次回测开了 10% 回撤锁定：运营口径，不作策略判断（锁定后回测里永不解锁）。策略门请看不开锁定的运行')
+  if (s.research) warnings.push(`这是研究假设 ${s.research} 的运行，结果见研究日志`)
   if (s.symbols && cfg.symbols.some((x) => !s.symbols.includes(x))) warnings.push(`这次回测只包含 ${s.symbols.join('、')}，模拟盘交易的是 ${cfg.symbols.join('、')}`)
   if (s.regimeFilter === false) warnings.push('这次回测没有开启市场状态过滤，和模拟盘规则不一致')
   if (!s.holdoutFrom || s.to > cfg.backtest.holdoutFrom) warnings.push(`这次回测用到了留出集（${new Date(cfg.backtest.holdoutFrom).toISOString().slice(0, 10)} 之后的最近 ${cfg.backtest.holdoutDays} 天），不能作为策略比较依据，请重新运行回测`)
-  return { runs, run: { id: run.id, summary: s }, checks, warnings }
+  return { runs, run: { id: run.id, summary: s }, checks, warnings, ops }
 }
 
 // ---------- 2. 模拟盘 vs 同期回测偏差（缓存：同一根 K 线只算一次）----------
@@ -181,11 +189,11 @@ async function evaluate({ runId } = {}) {
       title: '一、回测（滚动样本外验证）',
       hint: bt.run ? `依据回测 #${bt.run.id}，可在下方切换` : '还没有完成的回测，请先去「回测实验室」跑一次',
       items: [
-        item({ key: 'oos_sharpe', label: `样本外夏普比率 > ${A.oosSharpe}`, value: c.sharpe?.value ?? '—', target: `> ${A.oosSharpe}`, pass: !!c.sharpe?.pass, pending: !bt.run }),
-        item({ key: 'oos_mdd', label: `样本外最大回撤 < ${A.oosMaxDrawdownPct}%`, value: c.mdd?.value ?? '—', target: `< ${A.oosMaxDrawdownPct}%`, pass: !!c.mdd?.pass, pending: !bt.run }),
-        item({ key: 'oos_trades', label: `样本外交易笔数 > ${A.oosTrades}`, value: c.trades?.value ?? '—', target: `> ${A.oosTrades}`, pass: !!c.trades?.pass, pending: !bt.run }),
-        item({ key: 'coverage', label: '验证期覆盖上涨、下跌、震荡行情', value: c.coverage?.value ?? '—', target: '三种都有', pass: !!c.coverage?.pass, pending: !bt.run }),
-        item({ key: 'stable', label: '关键参数 ±20% 扰动后不崩塌', value: c.stable?.value ?? '—', target: '稳定', pass: !!c.stable?.pass, pending: !bt.run }),
+        item({ key: 'oos_sharpe', label: `样本外夏普比率 > ${A.oosSharpe}`, value: c.sharpe?.value ?? '—', target: `> ${A.oosSharpe}`, pass: !!c.sharpe?.pass, pending: !bt.run || bt.ops }),
+        item({ key: 'oos_mdd', label: `样本外最大回撤 < ${A.oosMaxDrawdownPct}%`, value: c.mdd?.value ?? '—', target: `< ${A.oosMaxDrawdownPct}%`, pass: !!c.mdd?.pass, pending: !bt.run || bt.ops }),
+        item({ key: 'oos_trades', label: `样本外交易笔数 > ${A.oosTrades}`, value: c.trades?.value ?? '—', target: `> ${A.oosTrades}`, pass: !!c.trades?.pass, pending: !bt.run || bt.ops }),
+        item({ key: 'coverage', label: '验证期覆盖上涨、下跌、震荡行情', value: c.coverage?.value ?? '—', target: '三种都有', pass: !!c.coverage?.pass, pending: !bt.run || bt.ops }),
+        item({ key: 'stable', label: '关键参数 ±20% 扰动后不崩塌', value: c.stable?.value ?? '—', target: '稳定', pass: !!c.stable?.pass, pending: !bt.run || bt.ops }),
       ],
     },
     {
@@ -264,7 +272,7 @@ async function evaluate({ runId } = {}) {
     total: all.length,
     liveUnlocked: false, // 本阶段始终不开放实盘；全部通过后再单独讨论
     groups,
-    backtest: { runs: bt.runs.map((r) => ({ id: r.id, createdAt: r.createdAt, oosSharpe: r.summary?.oosSharpe ?? null, passCount: r.summary?.passCount ?? null, checkCount: r.summary?.checkCount ?? null, symbols: r.summary?.symbols ?? [], strategies: r.summary?.strategies ?? [] })), chosen: bt.run?.id ?? null, warnings: bt.warnings ?? [] },
+    backtest: { runs: bt.runs.map((r) => ({ id: r.id, createdAt: r.createdAt, oosSharpe: r.summary?.oosSharpe ?? null, passCount: r.summary?.passCount ?? null, checkCount: r.summary?.checkCount ?? null, symbols: r.summary?.symbols ?? [], strategies: r.summary?.strategies ?? [], ops: isOpsRun(r), research: r.summary?.research ?? null })), chosen: bt.run?.id ?? null, warnings: bt.warnings ?? [] },
     deviation: dev,
     run,
     serverTime: Date.now(),

@@ -29,7 +29,7 @@ interface Accept {
   passCount: number
   total: number
   groups: Group[]
-  backtest: { runs: { id: number; createdAt: number | null; oosSharpe: number | null; passCount: number | null; checkCount: number | null; symbols: string[] }[]; chosen: number | null; warnings: string[] }
+  backtest: { runs: { id: number; createdAt: number | null; oosSharpe: number | null; passCount: number | null; checkCount: number | null; symbols: string[]; ops?: boolean; research?: string | null }[]; chosen: number | null; warnings: string[] }
   deviation: { from: number; strategies: string[]; paperReturnPct: number; backtestReturnPct: number; devPct: number; formula: string; curve: { ts: number; paper: number | null; backtest: number | null }[] } | null
   run: { startedAt: number | null; totalDays: number; continuousDays: number; outages: { ts: number; minutes: number }[] }
 }
@@ -123,6 +123,8 @@ export default function AcceptPage() {
                 {d.backtest.runs.map((r) => (
                   <option key={r.id} value={r.id}>
                     #{r.id} · {r.symbols.map((s) => s.split('/')[0]).join('+')} · 样本外夏普 {r.oosSharpe ?? '—'} · 通过 {r.passCount ?? 0}/{r.checkCount ?? 0}
+                    {r.ops ? ' · 运营口径（开锁定），不作策略判断' : ''}
+                    {r.research ? ` · 研究假设 ${r.research}` : ''}
                     {r.createdAt ? ` · ${fmtTime(r.createdAt)}` : ''}
                   </option>
                 ))}

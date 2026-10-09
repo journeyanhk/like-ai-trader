@@ -110,8 +110,8 @@ export default function BacktestPage() {
               <Chip on={!regimeFilter} onClick={() => setRegimeFilter(false)}>关（对照组）</Chip>
             </Row>
             <Row label="10% 回撤锁定">
-              <Chip on={ddLock} onClick={() => setDdLock(true)}>模拟</Chip>
-              <Chip on={!ddLock} onClick={() => setDdLock(false)}>不模拟（看策略全貌）</Chip>
+              <Chip on={!ddLock} onClick={() => setDdLock(false)}>不模拟（策略口径，验收用这个）</Chip>
+              <Chip on={ddLock} onClick={() => setDdLock(true)}>模拟（运营口径，不作策略判断）</Chip>
             </Row>
             <button
               onClick={() => start.mutate()}
@@ -464,6 +464,13 @@ function WalkForward({ r }: { r: LabResult }) {
         <Mini label="训练期平均夏普" value={wf.avgInSampleSharpe.toFixed(2)} c="text-fg-base" />
         <Mini label="样本外最大回撤" value={`-${wf.metrics.maxDrawdownPct.toFixed(1)}%`} c="text-fg-base" />
       </div>
+      {wf.opsLocks && (
+        <p className="text-xs text-fg-muted mt-2">
+          运营信息：如果开着 10% 回撤锁定，样本外会触发 <b className="text-fg-base">{wf.opsLocks.count}</b> 次
+          {wf.opsLocks.events.length > 0 && `（${wf.opsLocks.events.map((e) => new Date(e.ts).toISOString().slice(0, 10)).join('、')}）`}
+          。假设每次 24 小时后人工解锁。只作运营参考，不影响策略判断。
+        </p>
+      )}
       <div className="mt-3 overflow-x-auto">
         <table className="w-full text-xs">
           <thead>
