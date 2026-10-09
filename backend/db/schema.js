@@ -45,3 +45,23 @@ exports.sync_state = pgTable('sync_state', {
   status: text('status'),
   message: text('message'),
 })
+
+// 资金费率历史（OKX 公共接口，每小时累积）
+exports.funding_rates = pgTable('funding_rates', {
+  id: text('id').primaryKey(), // `${symbol}:${ts}`
+  symbol: text('symbol').notNull(),
+  ts: bigint('ts', { mode: 'number' }).notNull(),
+  rate: doublePrecision('rate').notNull(),
+})
+
+// 回测记录
+exports.backtest_runs = pgTable('backtest_runs', {
+  id: serial('id').primaryKey(),
+  created_at: timestamp('created_at').defaultNow(),
+  status: text('status').notNull(), // running / done / error
+  request: jsonb('request'),
+  summary: jsonb('summary'),
+  result: jsonb('result'),
+  error: text('error'),
+  duration_ms: integer('duration_ms'),
+})

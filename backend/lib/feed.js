@@ -71,7 +71,16 @@ async function syncOne(symbol, interval) {
   const since = rows[0]?.last ? rows[0].last + step : now - cfg.historyDays * 86400_000
   const closed = (await okx.candlesSince(symbol, interval, since)).filter((c) => c.ts + step <= now)
   for (let k = 0; k < closed.length; k += 500) await upsertCandles(symbol, interval, closed.slice(k, k + 500))
-  const added = closed.length
+  let added = closed.length
+  // 向前回补：历史不足 historyDays 时补齐更早的数据
+  const target = now - cfg.historyDays * 86400_000
+  const first = await dbQuery('SELECT MIN(ts)::float8 AS first FROM candles WHERE symbol=$1 AND interval=$2', [symbol, interval])
+  const firstTs = first.rows[0]?.first
+  if (firstTs && firstTs - target > step * 2) {
+    const older = await okx.candlesSince(symbol, interval, target, firstTs)
+    for (let k = 0; k < older.length; k += 500) await upsertCandles(symbol, interval, older.slice(k, k + 500))
+    added += older.length
+  }
   const q = await qualityCheck(symbol, interval)
   const status = q.gaps || q.badOrder || q.invalidBars ? 'warn' : 'ok'
   const message =
@@ -84,6 +93,31 @@ async function syncOne(symbol, interval) {
   )
   if (status !== 'ok') await logEvent('warn', 'data_quality', `${symbol} ${interval}：${message}`, q)
   return { symbol, interval, added, ...q, status }
+}
+
+async function syncFunding(symbol) {
+  const { rows } = await dbQuery('SELECT MAX(ts)::float8 AS last FROM funding_rates WHERE symbol=$1', [symbol])
+  const since = rows[0]?.last ? rows[0].last + 1 : 0
+  const list = await okx.fundingHistory(symbol, since)
+  for (let k = 0; k < list.length; k += 500) {
+    const part = list.slice(k, k + 500)
+    const vals = part.map((_, j) => `($${j * 4 + 1},$${j * 4 + 2},$${j * 4 + 3},$${j * 4 + 4})`).join(',')
+    const params = part.flatMap((f) => [`${symbol}:${f.ts}`, symbol, f.ts, f.rate])
+    await dbQuery(`INSERT INTO funding_rates (id, symbol, ts, rate) VALUES ${vals} ON CONFLICT (id) DO NOTHING`, params)
+  }
+  return list.length
+}
+
+async function loadFunding(symbol) {
+  const rows = []
+  let after = -1
+  for (;;) {
+    const r = await dbQuery('SELECT ts::float8 AS ts, rate FROM funding_rates WHERE symbol=$1 AND ts > $2 ORDER BY ts LIMIT 5000', [symbol, after])
+    rows.push(...r.rows)
+    if (r.rows.length < 5000) break
+    after = Number(r.rows[r.rows.length - 1].ts)
+  }
+  return rows.map((r) => ({ ts: Number(r.ts), rate: Number(r.rate) }))
 }
 
 async function syncAll() {
@@ -100,6 +134,13 @@ async function syncAll() {
         }
       }
     }
+    for (const s of cfg.symbols) {
+      try {
+        await syncFunding(s)
+      } catch (e) {
+        await logEvent('warn', 'data_sync', `${s} 资金费率同步失败：${e.message}`)
+      }
+    }
     const added = results.reduce((a, r) => a + (r.added || 0), 0)
     if (added > 0) await logEvent('info', 'data_sync', `行情同步完成，新增 ${added} 根 K 线`, results)
     return results
@@ -111,12 +152,21 @@ async function syncAll() {
   }
 }
 
+// 数据库单次最多返回 5000 行，按时间分页读取
 async function loadBars(symbol, interval, limit) {
-  const { rows } = await dbQuery(
-    `SELECT ts::float8 AS ts, open, high, low, close, volume FROM candles WHERE symbol=$1 AND interval=$2 ORDER BY ts DESC LIMIT $3`,
-    [symbol, interval, limit],
-  )
-  return rows.reverse().map((r) => ({
+  const out = []
+  let before = Number.MAX_SAFE_INTEGER
+  while (out.length < limit) {
+    const n = Math.min(5000, limit - out.length)
+    const { rows } = await dbQuery(
+      `SELECT ts::float8 AS ts, open, high, low, close, volume FROM candles WHERE symbol=$1 AND interval=$2 AND ts < $3 ORDER BY ts DESC LIMIT $4`,
+      [symbol, interval, before, n],
+    )
+    for (const r of rows) out.push(r)
+    if (rows.length < n) break
+    before = Number(rows[rows.length - 1].ts)
+  }
+  return out.reverse().map((r) => ({
     ts: Number(r.ts),
     open: Number(r.open),
     high: Number(r.high),
@@ -126,4 +176,4 @@ async function loadBars(symbol, interval, limit) {
   }))
 }
 
-module.exports = { syncAll, syncOne, loadBars, logEvent, isSyncing: () => !!running, INTERVAL_MS }
+module.exports = { syncAll, syncOne, loadBars, loadFunding, logEvent, isSyncing: () => !!running, INTERVAL_MS }

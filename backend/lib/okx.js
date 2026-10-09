@@ -34,9 +34,9 @@ const num = (v) => (v === '' || v == null ? null : Number(v))
 /**
  * 拉取 K 线：从现在往回翻页，直到早于 sinceMs。只返回已收盘（confirm=1）的 K 线，升序。
  */
-async function candlesSince(symbol, interval, sinceMs) {
+async function candlesSince(symbol, interval, sinceMs, beforeMs = null) {
   const out = []
-  let after = null
+  let after = beforeMs
   for (let guard = 0; guard < 200; guard++) {
     const params = { instId: instId(symbol), bar: BAR[interval], limit: '100' }
     if (after) params.after = String(after)
@@ -108,4 +108,25 @@ async function fearGreed(days = 31) {
     .sort((a, b) => a.ts - b.ts)
 }
 
-module.exports = { candlesSince, snapshot, fearGreed }
+// 资金费率历史（OKX 公共接口只保留约 3 个月，系统每小时累积保存，越用越长）
+async function fundingHistory(symbol, sinceMs) {
+  const out = []
+  let after = null
+  for (let guard = 0; guard < 30; guard++) {
+    const params = { instId: instId(symbol), limit: '100' }
+    if (after) params.after = String(after)
+    const rows = await get('public/funding-rate-history', params)
+    if (!rows?.length) break
+    for (const r of rows) {
+      const ts = Number(r.fundingTime)
+      if (ts >= sinceMs) out.push({ ts, rate: Number(r.realizedRate || r.fundingRate) })
+    }
+    const oldest = Number(rows[rows.length - 1].fundingTime)
+    if (oldest <= sinceMs) break
+    after = oldest
+    await sleep(150)
+  }
+  return out.sort((a, b) => a.ts - b.ts)
+}
+
+module.exports = { candlesSince, snapshot, fearGreed, fundingHistory }

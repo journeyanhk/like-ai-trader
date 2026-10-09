@@ -8,7 +8,7 @@ module.exports = {
   correlationGroups: { majors: ['BTC/USDT', 'ETH/USDT'] },
   mainInterval: '1h',
   confirmInterval: '4h',
-  historyDays: 365, // 至少回补 1 年历史
+  historyDays: 730, // 回补 2 年历史（滚动验证需要覆盖牛市、熊市、震荡）
 
   regime: {
     adxPeriod: 14,
@@ -48,7 +48,22 @@ module.exports = {
   },
 
   // 成本模型（第 2 次交付回测使用）
-  costs: { takerPct: 0.05, makerPct: 0.02, slippageBps: 5 },
+  costs: {
+    takerPct: 0.05,
+    makerPct: 0.02,
+    slippageBps: 5,
+    // 早于已保存资金费率历史的时段：保守假设每 8 小时付 0.01%（无论多空都算成本）
+    assumedFundingPct8h: 0.01,
+  },
+
+  // 回测 / 滚动验证
+  backtest: {
+    warmupDays: 30, // 指标预热，不计入结果
+    trainDays: 180,
+    testDays: 60,
+    stepDays: 30,
+    minTrainTrades: 8, // 训练期交易太少的参数组合不予采用
+  },
 
   paperStartingEquity: 10000,
 }

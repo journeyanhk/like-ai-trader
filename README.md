@@ -12,8 +12,8 @@
 
 | # | 交付 | 状态 |
 |---|---|---|
-| 1 | 行情 & 市场状态看板（含 1 年历史 K 线仓库） | ✅ 已完成 |
-| 2 | 回测实验室（成本模型、滚动验证、参数敏感性） | ⏳ |
+| 1 | 行情 & 市场状态看板（含 2 年历史 K 线仓库） | ✅ 已完成 |
+| 2 | 回测实验室（成本模型、滚动验证、参数敏感性） | ✅ 已完成 |
 | 3 | 风控大脑 + 模拟自动交易 + 紧急停止 | ⏳ |
 | 4 | 交易驾驶舱（净值、持仓、订单、告警、设置） | ⏳ |
 | 5 | AI 研究员 & 每日复盘 | ⏳ |
@@ -35,14 +35,18 @@
 backend/
   server.js            入口（Surf SDK createServer：自动挂载路由、定时任务、数据库同步）
   cron.json            定时任务：每小时第 2 分钟同步行情 + 判定市场状态
-  db/schema.js         数据表：candles, regime_snapshots, events, sync_state
+  db/schema.js         数据表：candles, regime_snapshots, events, sync_state, funding_rates, backtest_runs
   lib/config.js        全部参数（标的、周期、市场状态阈值、风控、成本）
   lib/indicators.js    确定性指标：EMA / ATR / ADX / RSI / 布林带
   lib/regime.js        市场状态判定（趋势 / 震荡 / 高波动 / 低流动性 / 不明确）
   lib/okx.js           免费行情源（OKX 公共 API + alternative.me），超时 + 重试 + 指数退避 + 限频
   lib/feed.js          行情同步、只存已收盘 K 线、数据质量检查
   lib/jobs.js          每小时任务
+  lib/strategies.js    基线策略：趋势跟随、均值回归（含参数网格）
+  lib/backtest.js      回测引擎：收盘出信号、下根开盘成交、手续费+滑点+资金费、风控仓位
+  lib/lab.js           回测实验室：基准对比、滚动验证（训练180天/测试60天/步长30天）、参数敏感性(±20%)、验收检查
   routes/market.js     /api/market/*  看板接口
+  routes/backtest.js   /api/backtest/*  回测接口
 frontend/
   src/App.tsx          主界面
   src/components/      图表与面板
@@ -60,6 +64,15 @@ docs/                  设计文档与计划
 | 不明确 | 其余情况 | 不开新仓 |
 
 判断顺序：低流动性 → 高波动 → 趋势 → 震荡 → 不明确。
+
+## 回测规则
+
+- 信号在 K 线收盘时产生，下一根 K 线开盘成交（不偷看未来）
+- 成本：吃单手续费 0.05% + 滑点 5bp；资金费用真实历史（OKX 仅提供约 3 个月），更早时段按每 8 小时 0.01% 保守扣除
+- 每笔风险 0.5% 净值，单日亏损 2% 当日停开新仓，可选 10% 回撤锁定
+- 滚动验证：训练窗口网格搜索最优参数（夏普最大、至少 8 笔交易），在随后的测试窗口上检验；样本外曲线由不重叠测试段拼接
+- 验收线：样本外夏普 > 1、最大回撤 < 15%、交易 > 100 笔、覆盖涨/跌/震荡行情、参数 ±20% 不崩溃
+- 回测完全在本地计算，不消耗 Surf 点数
 
 ## 自行部署
 
