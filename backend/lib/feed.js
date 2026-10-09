@@ -19,6 +19,7 @@ async function logEvent(level, type, message, detail = null) {
   } catch (e) {
     console.error('logEvent failed', e.message)
   }
+  require('./notify').onEvent(level, type, message) // P2-4 Telegram 直发
 }
 
 async function upsertCandles(symbol, interval, rows) {

@@ -4,8 +4,29 @@ const paper = require('../lib/paper')
 const jobs = require('../lib/jobs')
 
 let catchingUp = false
+// P2-4 推送式探活：配置了 HEALTHCHECK_PING_URL（如 Healthchecks.io）时，每分钟巡检成功就 ping 一次；
+// 失败 ping /fail。进程挂掉 → 不再 ping → 外部服务按超时报警（这是进程自己发不出的那种告警）。
+function ping(suffix = '') {
+  const url = process.env.HEALTHCHECK_PING_URL
+  if (!url) return
+  fetch(url.replace(/\/$/, '') + suffix, { signal: AbortSignal.timeout(8000) }).catch((e) => console.error('[probe] ping 失败', e.message))
+}
+
+let lastProblemKey = ''
 exports.handler = async () => {
-  await paper.monitor()
+  try {
+    await paper.monitor()
+  } catch (e) {
+    ping('/fail')
+    throw e
+  }
+  const h = require('../routes/probe').health()
+  ping(h.ok ? '' : '/fail')
+  // 自检发现问题（进程还活着时）：直接发 Telegram
+  const key = h.problems.join('|')
+  if (key && key !== lastProblemKey) require('../lib/feed').logEvent('warn', 'probe', `自检异常：${h.problems.join('；')}`)
+  if (!key && lastProblemKey) require('../lib/feed').logEvent('info', 'probe', '自检恢复正常')
+  lastProblemKey = key
   // 整点那次如果因为重启等原因错过了，这里补跑一次（同一根 K 线不会重复执行）
   if (paper.needsCycle() && !catchingUp) {
     catchingUp = true

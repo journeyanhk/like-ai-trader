@@ -253,6 +253,64 @@ export default function SettingsPage() {
           </div>
         </div>
       </div>
+
+      <AlertsCard />
+    </div>
+  )
+}
+
+interface Probe {
+  ok: boolean
+  problems: string[]
+  telegram: { configured: boolean; lastSentAt: number | null; lastError: string | null }
+  pushPing: { configured: boolean }
+}
+
+/** P2-4：外部探活 + Telegram 直发 */
+function AlertsCard() {
+  const q = useQuery<Probe>({
+    queryKey: ['probe'],
+    queryFn: () => fetch(api('probe')).then((r) => r.json()),
+    refetchInterval: 60_000,
+  })
+  const test = useMutation({
+    mutationFn: async () => {
+      const r = await fetch(api('probe/test'), { method: 'POST' })
+      const j = await r.json()
+      if (!j.ok) throw new Error(j.error || '发送失败')
+      return j
+    },
+  })
+  const p = q.data
+  const probeUrl = typeof window !== 'undefined' ? new URL(api('probe'), window.location.href).href : ''
+  return (
+    <div className={card}>
+      <Title icon={<ShieldCheck size={14} className="text-fg-muted" />} hint="系统自己挂掉时发不出通知，所以需要一个外部服务定时来检查它。">
+        告警通知与外部探活
+      </Title>
+      <KV
+        rows={[
+          ['系统自检', p ? (p.ok ? '正常' : `异常：${p.problems.join('；')}`) : '检查中…'],
+          ['Telegram 直发', p?.telegram.configured ? `已接通${p.telegram.lastSentAt ? `，上次发送 ${fmtTime(p.telegram.lastSentAt)}` : ''}${p.telegram.lastError ? `（上次失败：${p.telegram.lastError}）` : ''}` : '未配置（需要机器人令牌和聊天 ID）'],
+          ['推送式探活', p?.pushPing.configured ? '已配置：每分钟向外部监控报平安' : '未配置（可选，例如 Healthchecks.io）'],
+          ['拉取式探活地址', probeUrl],
+        ]}
+      />
+      <div className="text-[11px] text-fg-muted mt-2 leading-relaxed">
+        会推送：自动暂停 / 恢复、止损与平仓、开仓、回撤锁定、日亏停手、紧急停止、对账异常、自检异常。同一条消息 10 分钟内不重复，每小时最多 30 条。
+        外部监控（如 UptimeRobot）每隔几分钟访问上面的地址：返回 200 表示正常，503 或打不开就会通过它自己的渠道提醒你。
+      </div>
+      <div className="mt-3 flex items-center gap-3">
+        <button
+          className="px-3 py-1.5 rounded-md text-sm border border-border-strong hover:bg-bg-base disabled:opacity-50"
+          disabled={!p?.telegram.configured || test.isPending}
+          onClick={() => test.mutate()}
+        >
+          {test.isPending ? '发送中…' : '发送测试消息'}
+        </button>
+        {test.isSuccess && <span className="text-xs text-green-400">已发送，请查看 Telegram</span>}
+        {test.isError && <span className="text-xs text-red-400">{(test.error as Error).message}</span>}
+      </div>
     </div>
   )
 }
