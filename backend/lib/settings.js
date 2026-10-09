@@ -8,7 +8,7 @@ const DEFS = {
   riskPerTradePct: { label: '单笔风险（占权益 %）', min: 0.1, max: 0.5, step: 0.05, unit: '%', help: '每笔交易碰到止损时最多亏多少。越小越保守。' },
   dailyLossLimitPct: { label: '单日亏损上限（%）', min: 0.5, max: 2, step: 0.1, unit: '%', help: '当天（UTC）亏到这个比例，当天不再开新仓。' },
   maxDrawdownPct: { label: '最大回撤锁定（%）', min: 3, max: 10, step: 0.5, unit: '%', help: '从最高点回撤到这个比例，全部平仓并锁定，需要你手动解锁。' },
-  maxGrossExposurePct: { label: '总仓位上限（占权益 %）', min: 10, max: 100, step: 5, unit: '%', help: 'BTC + ETH 所有仓位加起来不超过权益的多少。' },
+  maxGrossExposurePct: { label: '总仓位上限（占权益 %）', min: 10, max: 100, step: 5, unit: '%', help: '所有币种的仓位加起来不超过权益的多少。' },
   maxSymbolExposurePct: { label: '单个币仓位上限（%）', min: 10, max: 50, step: 5, unit: '%', help: '单个币的仓位不超过权益的多少。' },
   maxLeverage: { label: '杠杆上限（倍）', min: 1, max: 3, step: 0.5, unit: 'x', help: '总仓位 ÷ 权益的上限。' },
 }
@@ -17,7 +17,7 @@ const DOC = { ...cfg.risk } // 启动时的文档默认值
 let loaded = false
 async function ensureLoaded(force = false) {
   if (loaded && !force) return
-  const { rows } = await dbQuery(`SELECT key, value FROM settings WHERE key LIKE 'risk.%'`)
+  const { rows } = await dbQuery(`SELECT key, value FROM trader_settings WHERE key LIKE 'risk.%'`)
   for (const r of rows) {
     const k = r.key.slice(5)
     const v = Number(r.value)
@@ -54,7 +54,7 @@ async function update(changes, reason, source = 'web') {
   const t = Date.now()
   for (const a of applied) {
     await dbQuery(
-      `INSERT INTO settings (key, value, updated_at) VALUES ($1,$2,$3) ON CONFLICT (key) DO UPDATE SET value=$2, updated_at=$3`,
+      `INSERT INTO trader_settings (key, value, updated_at) VALUES ($1,$2,$3) ON CONFLICT (key) DO UPDATE SET value=$2, updated_at=$3`,
       [`risk.${a.key}`, JSON.stringify(a.value), t],
     )
     await dbQuery(`INSERT INTO settings_changes (ts, key, old_value, new_value, reason, source) VALUES ($1,$2,$3,$4,$5,$6)`, [

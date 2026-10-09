@@ -70,6 +70,7 @@ export const REGIME_STYLE: Record<string, { color: string; bg: string; hint: str
 }
 
 export const STRATEGY_NAME: Record<string, string> = {
+  breakout: '趋势突破',
   trend_following: '趋势跟随',
   mean_reversion: '均值回归',
 }

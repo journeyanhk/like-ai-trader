@@ -568,9 +568,9 @@ async function runCycle(regimes = null, { force = false } = {}) {
       const c = ctxs[s]
       if (!c.fresh || c.hadPos || S.positions[s]) continue
       const allowed = cfg.allowedStrategies[d.regime] || []
-      const candidates = cfg.paper.strategies.filter((nme) => allowed.includes(nme))
+      const candidates = Object.keys(STRATEGIES).filter((nme) => allowed.includes(nme) && S.acct.enabled_strategies.includes(nme))
       if (!candidates.length) {
-        d.notes.push(`市场状态「${d.regimeLabel}」不允许任何策略开新仓`)
+        d.notes.push(`市场状态「${d.regimeLabel}」下没有可用的已启用策略，不开新仓`)
         continue
       }
       let found = false

@@ -25,7 +25,7 @@ interface SettingsData {
 interface Change { id: number; ts: number; key: string; label: string; old_value: number | string; new_value: number | string; reason: string; source: string }
 
 const REGIME_LABEL: Record<string, string> = { trend_up: '上涨趋势', trend_down: '下跌趋势', range: '震荡', high_vol: '高波动', low_liquidity: '低流动性', unclear: '不明确' }
-const STRAT_LABEL: Record<string, string> = { trend_following: '趋势跟随', mean_reversion: '均值回归' }
+const STRAT_LABEL: Record<string, string> = { breakout: '趋势突破', trend_following: '趋势跟随', mean_reversion: '均值回归' }
 
 export default function SettingsPage() {
   const qc = useQueryClient()

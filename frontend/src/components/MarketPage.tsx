@@ -34,7 +34,7 @@ export default function MarketPage({
             <FearGreedCard data={o.fearGreed} />
           </section>
 
-          <section className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+          <section className="grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-3 gap-4">
             {o.symbols.map((s) => (
               <RegimeCard key={s.symbol} s={s} />
             ))}

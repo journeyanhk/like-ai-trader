@@ -80,7 +80,52 @@ const meanReversion = {
   },
 }
 
-const STRATEGIES = { trend_following: trendFollowing, mean_reversion: meanReversion }
+// 区间最高 / 最低（不含当前 K 线）
+function highest(arr, n, i) {
+  let m = -Infinity
+  for (let k = i - n; k < i; k++) m = Math.max(m, arr[k])
+  return m
+}
+function lowest(arr, n, i) {
+  let m = Infinity
+  for (let k = i - n; k < i; k++) m = Math.min(m, arr[k])
+  return m
+}
+
+// 第 7 次交付：趋势突破（唐奇安通道）
+// 研究结论：在 BTC/ETH/SOL/XRP/DOGE 上，各种突破变体的样本外结果都为正（夏普 0.5~1.2），
+// 优势来自「多币种分散」而不是精调参数；短线均值回归类策略扣除成本后全部亏损。
+const breakout = {
+  name: 'breakout',
+  version: '1.0',
+  label: '趋势突破',
+  description: '收盘价突破过去 N 小时最高价、且在 200 小时均线上方时做多（反之做空）；只用 ATR 移动止损离场，让盈利奔跑。',
+  allowedRegimes: ['trend_up', 'trend_down'],
+  defaults: { lookback: 120, trendLen: 200, atrMult: 4 },
+  grid: { lookback: [96, 120, 168], atrMult: [3, 4, 5] },
+  sensitivityKeys: ['lookback', 'trendLen', 'atrMult'],
+  paramLabels: { lookback: '突破周期（小时）', trendLen: '趋势均线周期', atrMult: '移动止损距离（ATR 倍数）' },
+  invalidation: '连续 20 笔交易盈亏比 < 1.0 自动下线',
+  prepare(bars, p) {
+    const c = bars.map((b) => b.close)
+    return { h: bars.map((b) => b.high), l: bars.map((b) => b.low), ema: ind.ema(c, Math.round(p.trendLen)), atr: ind.atr(bars, 14) }
+  },
+  entry(i, { bars, x, p, regime, filter }) {
+    const n = Math.round(p.lookback)
+    if (i < n + 1 || x.ema[i] == null || x.atr[i] == null) return null
+    const c = bars[i].close
+    if (c > highest(x.h, n, i) && c > x.ema[i] && (!filter || regime === 'trend_up')) return { side: 1, stop: c - p.atrMult * x.atr[i] }
+    if (c < lowest(x.l, n, i) && c < x.ema[i] && (!filter || regime === 'trend_down')) return { side: -1, stop: c + p.atrMult * x.atr[i] }
+    return null
+  },
+  exit(i, pos, { bars, x, p }) {
+    const c = bars[i].close
+    if (x.atr[i] != null) pos.stop = pos.side > 0 ? Math.max(pos.stop, c - p.atrMult * x.atr[i]) : Math.min(pos.stop, c + p.atrMult * x.atr[i])
+    return null
+  },
+}
+
+const STRATEGIES = { breakout, trend_following: trendFollowing, mean_reversion: meanReversion }
 
 // 网格展开
 function expandGrid(grid, defaults) {

@@ -169,7 +169,8 @@ exports.paper_cycles = pgTable('paper_cycles', {
 
 // ===== 第 4 次交付：设置 =====
 // 风控参数覆盖值（只允许比设计文档更严格）
-exports.settings = pgTable('settings', {
+// 注意：数据库里已有一张别的程序的 settings 表（结构不同），所以用独立的表名
+exports.trader_settings = pgTable('trader_settings', {
   key: text('key').primaryKey(), // 例如 risk.dailyLossLimitPct
   value: jsonb('value'),
   updated_at: bigint('updated_at', { mode: 'number' }),

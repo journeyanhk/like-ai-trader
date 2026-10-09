@@ -5,7 +5,8 @@ module.exports = {
   live: { enabled: false, maxInitialCapitalPct: 5 },
   exchange: 'okx', // 行情来自 OKX 免费公共接口（不消耗 Surf 点数）
   marketType: 'swap', // 永续合约
-  symbols: ['BTC/USDT', 'ETH/USDT'],
+  // 第 7 次交付：从 2 个扩到 5 个币，靠分散提高稳定性（数据仍来自 OKX 免费接口）
+  symbols: ['BTC/USDT', 'ETH/USDT', 'SOL/USDT', 'XRP/USDT', 'DOGE/USDT'],
   // 相关资产分组（风控合并计算敞口）
   correlationGroups: { majors: ['BTC/USDT', 'ETH/USDT'] },
   mainInterval: '1h',
@@ -27,8 +28,8 @@ module.exports = {
 
   // 每种市场状态允许运行的策略（状态不明确不开新仓）
   allowedStrategies: {
-    trend_up: ['trend_following'],
-    trend_down: ['trend_following'],
+    trend_up: ['breakout', 'trend_following'],
+    trend_down: ['breakout', 'trend_following'],
     range: ['mean_reversion'],
     high_vol: [],
     low_liquidity: [],
@@ -94,7 +95,7 @@ module.exports = {
 
   // 模拟盘（第 3 次交付）
   paper: {
-    strategies: ['trend_following', 'mean_reversion'], // 默认启用的策略（参数用策略默认值）
+    strategies: ['breakout'], // 默认启用的策略（参数用策略默认值）；旧的两个策略回测亏损，保留在策略库但默认不启用
     barsForSignals: 600, // 计算信号用的 1h K 线数量
     heartbeatEveryMs: 5 * 60_000, // 心跳 5 分钟写一次
     heartbeatMissing: 3, // 连续 3 次缺失视为宕机

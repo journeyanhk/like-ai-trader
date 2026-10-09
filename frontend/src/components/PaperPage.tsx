@@ -314,7 +314,7 @@ function RiskGauges({ s }: { s: PaperStatus }) {
       <div className="space-y-3">
         <Bar label={`今日亏损（到 ${g.dailyLimitPct}% 当天停手）`} value={Math.max(0, -g.dailyChangePct)} limit={g.dailyLimitPct} fmt={p1} hint="今天（UTC）权益相对今天开始时的跌幅" />
         <Bar label={`从最高点回撤（到 ${g.drawdownLimitPct}% 全平锁定）`} value={g.drawdownPct} limit={g.drawdownLimitPct} fmt={p1} hint={`最高权益 ${usd(s.peakEquity)}`} />
-        <Bar label="总仓位 / 权益" value={g.grossPct} limit={g.grossLimitPct} fmt={(v) => `${v.toFixed(0)}%`} hint="BTC 和 ETH 走势高度相关，合并计算" />
+        <Bar label="总仓位 / 权益" value={g.grossPct} limit={g.grossLimitPct} fmt={(v) => `${v.toFixed(0)}%`} hint="5 个币走势相关，所有仓位合并计算" />
         <Bar label="杠杆" value={g.leverage} limit={g.maxLeverage} fmt={(v) => `${v.toFixed(2)}x`} hint="总仓位 ÷ 权益" />
       </div>
       <div className="text-[11px] text-fg-muted mt-3 space-y-0.5">
@@ -417,7 +417,7 @@ export function Positions({ s }: { s: PaperStatus }) {
 function Strategies({ s, onToggle, busy }: { s: PaperStatus; onToggle: (name: string, enabled: boolean, label: string) => void; busy: boolean }) {
   return (
     <div className={card}>
-      <Title hint="模拟盘用策略默认参数。注意：这两个是入门策略，回测没有通过验收，目前只用来验证整套流程能稳定运行。">策略开关</Title>
+      <Title hint="模拟盘用策略默认参数。主力是「趋势突破」（回测验收已通过）；两个旧策略回测亏损，默认关闭，仅保留作对照。">策略开关</Title>
       <div className="space-y-3">
         {s.strategies.map((st) => (
           <div key={st.name} className="flex items-start justify-between gap-3">

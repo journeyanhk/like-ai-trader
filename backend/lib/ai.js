@@ -18,7 +18,7 @@ const FALLBACK_PRICE = MODELS['deepseek-v4-pro'].price
 const conf = { loaded: false, apiKey: null, model: null }
 async function ensureConf(force = false) {
   if (conf.loaded && !force) return conf
-  const { rows } = await dbQuery(`SELECT key, value FROM settings WHERE key IN ('ai.apiKey','ai.model')`)
+  const { rows } = await dbQuery(`SELECT key, value FROM trader_settings WHERE key IN ('ai.apiKey','ai.model')`)
   conf.apiKey = null
   conf.model = null
   for (const r of rows) {
@@ -110,7 +110,7 @@ async function updateConfig({ apiKey: newKey, model: newModel }, reason) {
   if (!changes.length) return { ok: false, error: '没有任何变化' }
   const t = Date.now()
   for (const c of changes) {
-    await dbQuery(`INSERT INTO settings (key, value, updated_at) VALUES ($1,$2,$3) ON CONFLICT (key) DO UPDATE SET value=$2, updated_at=$3`, [c.key, JSON.stringify(c.value), t])
+    await dbQuery(`INSERT INTO trader_settings (key, value, updated_at) VALUES ($1,$2,$3) ON CONFLICT (key) DO UPDATE SET value=$2, updated_at=$3`, [c.key, JSON.stringify(c.value), t])
     // 修改记录里只保存打码后的 Key
     await dbQuery(`INSERT INTO settings_changes (ts, key, old_value, new_value, reason, source) VALUES ($1,$2,$3,$4,$5,'web')`, [t, c.key, JSON.stringify(c.old), JSON.stringify(c.shown), reason])
   }

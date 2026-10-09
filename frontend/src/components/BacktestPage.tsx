@@ -23,10 +23,12 @@ const pct = (v: number | null | undefined, d = 1) => (v == null ? '—' : `${v >
 const usd = (v: number | null | undefined) => (v == null ? '—' : `${v < 0 ? '-' : ''}$${Math.abs(v).toLocaleString('en-US', { maximumFractionDigits: 0 })}`)
 const tone = (v: number | null | undefined) => (v == null ? 'text-fg-base' : v > 0 ? 'text-[#10b981]' : v < 0 ? 'text-[#ef4444]' : 'text-fg-base')
 
+const ALL_SYMBOLS = ['BTC/USDT', 'ETH/USDT', 'SOL/USDT', 'XRP/USDT', 'DOGE/USDT']
+
 export default function BacktestPage() {
   const qc = useQueryClient()
-  const [strategies, setStrategies] = useState<string[]>(['trend_following', 'mean_reversion'])
-  const [symbols, setSymbols] = useState<string[]>(['BTC/USDT', 'ETH/USDT'])
+  const [strategies, setStrategies] = useState<string[]>(['breakout'])
+  const [symbols, setSymbols] = useState<string[]>(ALL_SYMBOLS)
   const [regimeFilter, setRegimeFilter] = useState(true)
   const [ddLock, setDdLock] = useState(false)
   const [selected, setSelected] = useState<number | null>(null)
@@ -91,14 +93,15 @@ export default function BacktestPage() {
           <div className="flex flex-col gap-2 min-w-[300px]">
             <Row label="策略">
               {[
-                ['trend_following', '趋势跟随'],
-                ['mean_reversion', '均值回归'],
+                ['breakout', '趋势突破'],
+                ['trend_following', '趋势跟随（旧）'],
+                ['mean_reversion', '均值回归（旧）'],
               ].map(([k, l]) => (
                 <Chip key={k} on={strategies.includes(k)} onClick={() => toggle(strategies, k, setStrategies)}>{l}</Chip>
               ))}
             </Row>
             <Row label="币种">
-              {['BTC/USDT', 'ETH/USDT'].map((s) => (
+              {ALL_SYMBOLS.map((s) => (
                 <Chip key={s} on={symbols.includes(s)} onClick={() => toggle(symbols, s, setSymbols)}>{coin(s)}</Chip>
               ))}
             </Row>
@@ -431,9 +434,11 @@ const REGIME_COLOR: Record<string, string> = {
 function paramText(p: Record<string, Record<string, number>>) {
   return Object.entries(p)
     .map(([k, v]) =>
-      k === 'trend_following'
-        ? `趋势 ${v.fast}/${v.slow}均线 ${v.atrMult}×ATR`
-        : `回归 ${v.bbMult}σ RSI${v.rsiLow} ${v.atrMult}×ATR`,
+      k === 'breakout'
+        ? `突破 ${v.lookback}h ${v.atrMult}×ATR`
+        : k === 'trend_following'
+          ? `趋势 ${v.fast}/${v.slow}均线 ${v.atrMult}×ATR`
+          : `回归 ${v.bbMult}σ RSI${v.rsiLow} ${v.atrMult}×ATR`,
     )
     .join('；')
 }

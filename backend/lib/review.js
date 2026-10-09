@@ -18,7 +18,7 @@ const n = (x) => (x == null ? null : Number(x))
 
 // ---------- 设置：新闻开关（默认关闭，开启会消耗 Surf 点数） ----------
 async function getAiSettings() {
-  const { rows } = await dbQuery(`SELECT value FROM settings WHERE key='ai.newsEnabled'`)
+  const { rows } = await dbQuery(`SELECT value FROM trader_settings WHERE key='ai.newsEnabled'`)
   return { newsEnabled: rows[0]?.value === true }
 }
 
@@ -29,7 +29,7 @@ async function setNewsEnabled(enabled, reason) {
   enabled = !!enabled
   if (cur.newsEnabled === enabled) return { ok: false, error: '没有任何变化' }
   const t = Date.now()
-  await dbQuery(`INSERT INTO settings (key, value, updated_at) VALUES ('ai.newsEnabled',$1,$2) ON CONFLICT (key) DO UPDATE SET value=$1, updated_at=$2`, [
+  await dbQuery(`INSERT INTO trader_settings (key, value, updated_at) VALUES ('ai.newsEnabled',$1,$2) ON CONFLICT (key) DO UPDATE SET value=$1, updated_at=$2`, [
     JSON.stringify(enabled),
     t,
   ])
