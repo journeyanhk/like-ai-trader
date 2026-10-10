@@ -38,7 +38,7 @@ router.get('/', async (_req, res) => {
 router.post('/risk', async (req, res) => {
   const runner = require('../lib/runner')
   const ri = runner.info()
-  if (!runner.isLeader() && ri.leaseHolder && ri.leaseHolder !== ri.id) return res.status(409).json({ ok: false, error: '风控参数请到正在运行模拟盘的实例（已发布的网站）上修改，这里只读' })
+  if (ri.role === 'parked' || (!runner.isLeader() && ri.leaseHolder && ri.leaseHolder !== ri.id)) return res.status(409).json({ ok: false, error: '风控参数请到正在运行模拟盘的实例（已发布的网站）上修改，这里只读' })
   try {
     const r = req.body?.reset ? await settings.resetToDoc(req.body?.reason) : await settings.update(req.body?.changes, req.body?.reason)
     res.status(r.ok ? 200 : 400).json(r)

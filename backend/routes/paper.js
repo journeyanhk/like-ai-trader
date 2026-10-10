@@ -178,6 +178,7 @@ router.use((req, res, next) => {
   const runner = require('../lib/runner')
   if (runner.isLeader()) return next()
   const i = runner.info()
+  if (i.role === 'parked') return res.status(409).json({ ok: false, error: '这里是开发预览（只读），模拟盘在已发布的网站上运行，请到那里操作' })
   if (!i.leaseHolder || i.leaseHolder === i.id) return next() // 还没有任何实例拿到租约（刚启动）：允许
   res.status(409).json({ ok: false, error: i.leaseSandbox === false ? '模拟盘正由线上实例运行，请到已发布的网站上操作（这里是开发预览，只读）' : '模拟盘正由另一个实例运行，这里只读' })
 })

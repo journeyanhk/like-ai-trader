@@ -34,6 +34,14 @@ async function q(sql, p) {
 async function tick() {
   const t = Date.now()
   const wasLeader = state.leader
+  require('./envfile').loadEnv()
+  // 开发沙盒设 PAPER_RUNNER=off：线上与沙盒其实是两个独立数据库，租约互相看不见，所以沙盒主动停跑（只读预览）
+  if (process.env.PAPER_RUNNER === 'off') {
+    state.leader = false
+    state.parked = true
+    state.lastTick = t
+    return { leader: false, justAcquired: false }
+  }
   try {
     const rows = await q(
       `INSERT INTO runner_lease (id, holder, host, sandbox, acquired_at, renewed_at, expires_at)
@@ -93,7 +101,7 @@ async function loadSecrets(force = false) {
 }
 
 function info() {
-  return { id: ID, sandbox: SANDBOX, role: state.leader ? 'leader' : 'standby', startedAt: STARTED, commit, lastTick: state.lastTick, leaseHolder: state.leaseHolder, leaseSandbox: state.leaseSandbox, leaseExpires: state.leaseExpires, error: state.error }
+  return { id: ID, sandbox: SANDBOX, role: state.leader ? 'leader' : state.parked ? 'parked' : 'standby', startedAt: STARTED, commit, lastTick: state.lastTick, leaseHolder: state.leaseHolder, leaseSandbox: state.leaseSandbox, leaseExpires: state.leaseExpires, error: state.error }
 }
 
 async function instances() {

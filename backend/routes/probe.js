@@ -15,7 +15,7 @@ function health() {
   const problems = []
   const runner = require('../lib/runner').info()
   // 备用实例本身不跑模拟盘：只要租约在别人手里且没过期，就算健康
-  if (runner.role === 'standby' && runner.leaseHolder && runner.leaseExpires > t) {
+  if (runner.role === 'parked' || (runner.role === 'standby' && runner.leaseHolder && runner.leaseExpires > t)) {
     return { ok: true, problems, role: 'standby', runner, serverTime: t, telegram: notify.status(), pushPing: { configured: !!process.env.HEALTHCHECK_PING_URL } }
   }
   if (!s) problems.push('模拟盘还没加载')
