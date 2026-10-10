@@ -13,6 +13,11 @@ function health() {
   const s = paper.snapshot()
   const t = Date.now()
   const problems = []
+  const runner = require('../lib/runner').info()
+  // 备用实例本身不跑模拟盘：只要租约在别人手里且没过期，就算健康
+  if (runner.role === 'standby' && runner.leaseHolder && runner.leaseExpires > t) {
+    return { ok: true, problems, role: 'standby', runner, serverTime: t, telegram: notify.status(), pushPing: { configured: !!process.env.HEALTHCHECK_PING_URL } }
+  }
   if (!s) problems.push('模拟盘还没加载')
   else {
     const mon = s.lastMonitorAt ? (t - s.lastMonitorAt) / 1000 : null
@@ -32,10 +37,20 @@ function health() {
     lastHeartbeat: s?.lastHeartbeat ?? null,
     lastBarTs: s?.lastBarTs ?? null,
     serverTime: Date.now(),
+    role: runner.role,
+    runner,
     telegram: notify.status(),
     pushPing: { configured: !!process.env.HEALTHCHECK_PING_URL },
   }
 }
+
+router.get('/instances', async (_req, res) => {
+  try {
+    res.json({ self: require('../lib/runner').info(), instances: await require('../lib/runner').instances() })
+  } catch (e) {
+    res.status(500).json({ error: e.message })
+  }
+})
 
 router.get('/', (_req, res) => {
   const h = health()

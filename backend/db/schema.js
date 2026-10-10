@@ -236,3 +236,31 @@ exports.paper_repro = pgTable('paper_repro', {
   data: jsonb('data').notNull(), // candles / funding_rates 行数与首尾 ts
   params: jsonb('params').notNull(), // runBacktest 调用参数
 })
+
+// ===== 第 11 次交付：单实例运行（发布后沙盒与线上共用同一个数据库）=====
+// 模拟盘主循环只能由一个实例执行：谁持有租约谁跑；线上实例优先，沙盒只在线上失联时接管
+exports.runner_lease = pgTable('runner_lease', {
+  id: text('id').primaryKey(), // 'paper'
+  holder: text('holder').notNull(),
+  host: text('host'),
+  sandbox: boolean('sandbox'),
+  acquired_at: bigint('acquired_at', { mode: 'number' }),
+  renewed_at: bigint('renewed_at', { mode: 'number' }),
+  expires_at: bigint('expires_at', { mode: 'number' }),
+})
+// 所有实例的登记（谁在线、什么角色）
+exports.runner_instances = pgTable('runner_instances', {
+  id: text('id').primaryKey(), // holder
+  host: text('host'),
+  sandbox: boolean('sandbox'),
+  started_at: bigint('started_at', { mode: 'number' }),
+  last_seen: bigint('last_seen', { mode: 'number' }),
+  role: text('role'),
+  git_commit: text('git_commit'),
+})
+// 告警凭证（.env 不随发布带走，存数据库供所有实例读取；数据库是你自己的私有库，不进 git）
+exports.app_secrets = pgTable('app_secrets', {
+  key: text('key').primaryKey(),
+  value: text('value').notNull(),
+  updated_at: bigint('updated_at', { mode: 'number' }),
+})

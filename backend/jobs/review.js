@@ -4,6 +4,7 @@ const review = require('../lib/review')
 const ai = require('../lib/ai')
 
 exports.handler = async () => {
+  if (!require('../lib/runner').isLeader()) return console.log('[review] 备用实例，跳过')
   try {
     const c = await require('../lib/contractCheck').checkAndAlert()
     console.log('[review] 合约规格', c.ok ? '一致' : JSON.stringify(c.rows.filter((x) => !x.ok)))

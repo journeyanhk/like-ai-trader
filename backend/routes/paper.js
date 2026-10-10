@@ -172,6 +172,15 @@ router.get(
 )
 
 // ===== 操作 =====
+// 单实例运行：备用实例（另一个实例正在跑模拟盘）不接受操作，避免用过期的内存状态覆盖账户
+router.use((req, res, next) => {
+  if (req.method !== 'POST') return next()
+  const runner = require('../lib/runner')
+  if (runner.isLeader()) return next()
+  const i = runner.info()
+  if (!i.leaseHolder || i.leaseHolder === i.id) return next() // 还没有任何实例拿到租约（刚启动）：允许
+  res.status(409).json({ ok: false, error: i.leaseSandbox === false ? '模拟盘正由线上实例运行，请到已发布的网站上操作（这里是开发预览，只读）' : '模拟盘正由另一个实例运行，这里只读' })
+})
 router.post(
   '/emergency-stop',
   wrap(async (req) => paper.emergencyStop(String(req.body?.note || '').slice(0, 200))),

@@ -15,6 +15,9 @@ function ping(suffix = '') {
 
 let lastProblemKey = ''
 exports.handler = async () => {
+  // 单实例运行：不是租约持有者就只登记在线，不跑模拟盘、不报平安（报平安的应是真正在干活的那个）
+  const lease = await require('../lib/runner').tick()
+  if (!lease.leader) return
   try {
     await paper.monitor()
   } catch (e) {
